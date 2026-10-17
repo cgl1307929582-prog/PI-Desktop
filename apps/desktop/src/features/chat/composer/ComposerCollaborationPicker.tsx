@@ -22,7 +22,7 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
   const providers = useAppStore((state) => state.providers);
   const showToast = useAppStore((state) => state.showToast);
   const saved = collaborationSettings(settings?.collaboration);
-  const displayMode = t(`collaboration.${saved.mode}`) + (saved.mode !== "off" && saved.workflow && saved.workflow !== "adaptive"
+  const displayMode = t(`collaboration.${saved.mode}`) + (saved.mode === "deep" && saved.workflow && saved.workflow !== "adaptive"
     ? ` · ${t(`collaboration.workflows.${saved.workflow}`)}` : "");
   const [draft, setDraft] = useState<CollaborationSettings>(saved);
   const [open, setOpen] = useState(false);
@@ -90,6 +90,7 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
           label={t("collaboration.workflow")} disabled={busy} fullWidth
           onChange={(workflow) => setDraft(value => ({ ...value, workflow: workflow as CollaborationSettings["workflow"] }))} />
       </Field>
+      {draft.mode === "auto" ? <p className="text-xs text-muted">{t("collaboration.smartWorkflowHint")}</p> : null}
       <Field label={t("collaboration.codingMode")}>
         <SettingsMenuSelect value={draft.codingMode ?? "primary"}
           options={COLLABORATION_CODING_MODES.map(id => ({ id, label: t(`collaboration.codingModes.${id}`) }))}

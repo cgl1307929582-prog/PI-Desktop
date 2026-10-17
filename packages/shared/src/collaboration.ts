@@ -94,23 +94,32 @@ export function collaborationDefinitions(settings: CollaborationSettings): Subag
 
 export function collaborationPrompt(settings: CollaborationSettings): string {
   if (settings.mode === "off") return "";
+  const routing = settings.mode === "auto" ? [
+    "Intelligent collaboration is available on demand. At the start of each user turn, decide yourself whether delegation materially helps, using the request and any necessary inspection. Do not start a subagent just to make this decision.",
+    "Default to doing the work yourself: questions, explanations, file lookups, narrow low-risk edits and their focused tests normally need no subagent. You may use Read/Glob/Grep/Write/Edit/Bash directly under the existing permissions. The presence of a workflow preset or a coding request alone is not a reason to delegate.",
+    "Choose collaboration when the user explicitly requests it, when substantial independent tasks benefit from parallel work (such as frontend and backend changes), when a broad investigation would consume much context, or when a non-trivial or high-risk change needs independent review. Use the smallest useful team. Briefly explain the concrete reason before starting it; no trigger phrase or extra confirmation is needed.",
+    "Once you start a workflow or a native delegate, coordinate for the rest of this turn: parent Write/Edit/Bash become unavailable, and the existing review/test gates apply. If escalating after direct edits, include those edits and checks in the task brief and require inspection of the current files. Reassess from scratch next user turn; previous delegation does not require future delegation.",
+  ] : [];
   if (hasCollaborationWorkflow(settings)) return [
-    `Automatic collaboration workflow is enabled: ${settings.workflow}. No trigger phrase is required.`,
-    "For implementation, repairs or code review, call CollaborationWorkflow once with the complete task, constraints and acceptance criteria. The runtime runs planning, dependency-ordered coding, fresh independent review/test agents, and bounded repair. Do not launch Task yourself or bypass the workflow through other tools, plugins or shells.",
+    ...routing,
+    `The configured collaboration workflow is ${settings.workflow}. No trigger phrase is required.`,
+    `${settings.mode === "auto" ? "Only when collaboration is warranted" : "For implementation, repairs or code review"}, call CollaborationWorkflow once with the complete task, constraints and acceptance criteria. The runtime runs planning, dependency-ordered coding, fresh independent review/test agents, and bounded repair. Do not launch Task yourself or bypass an engaged workflow through other tools, plugins or shells.`,
     "Simple questions may be answered directly. Preserve read-only requests: set readOnly=true when the user requests analysis, a plan, or a review without modifications.",
+    ...(settings.workflow === "review" ? ["The selected review preset is always read-only, including direct analysis. Parent Write/Edit/Bash remain disabled; use Read/Glob/Grep or a read-only CollaborationWorkflow."] : []),
     `Coding assignment: ${settings.codingMode === "split" ? "the primary model handles frontend and scoped assistance; the collaboration model handles backend" : "the primary model handles all implementation"}. The collaboration model plans, reviews and tests in separate contexts.`,
-    "All children are native Task delegates in this conversation. Never create Worker sessions or windows. Parent Write/Edit/Bash are disabled; permissions remain unchanged.",
+    `All children are native Task delegates in this conversation. Never create Worker sessions or windows. ${settings.mode === "deep" ? "Parent Write/Edit/Bash are disabled. " : ""}Permissions remain unchanged.`,
     "Summarize the workflow's actual evidence. Failed, canceled, invalid or unverified stages cannot be reported as a successful delivery.",
   ].join("\n");
   return [
+    ...routing,
     `Automatic multi-model collaboration is enabled (${settings.mode}); the user does not need a trigger phrase.`,
-    `You coordinate the task. Use native Task, TaskWait, TaskList and TaskStop; all delegates belong to this conversation. Do not create Worker sessions for collaboration.`,
-    `Answer simple questions yourself. Delegate implementation and repairs to ${COLLABORATION_EXECUTOR}; delegate planning, exploration and independent review to ${COLLABORATION_ANALYST}; delegate test execution to ${COLLABORATION_VERIFIER}. Use their pinned models without overrides or fallbacks.`,
-    `Parent Write, Edit and Bash calls are disabled in this mode. Give delegates the user requirements, exact workspace, permitted files, dependencies and acceptance criteria. Preserve read-only requests.`,
+    `When collaborating, coordinate with native Task, TaskWait, TaskList and TaskStop; all delegates belong to this conversation. Do not create Worker sessions for collaboration.`,
+    `Answer simple questions yourself. ${settings.mode === "auto" ? "When collaboration is warranted, delegate" : "Delegate"} implementation and repairs to ${COLLABORATION_EXECUTOR}; delegate planning, exploration and independent review to ${COLLABORATION_ANALYST}; delegate test execution to ${COLLABORATION_VERIFIER}. Use their pinned models without overrides or fallbacks.`,
+    `${settings.mode === "deep" ? "Parent Write, Edit and Bash calls are disabled in this mode. " : ""}Give delegates the user requirements, exact workspace, permitted files, dependencies and acceptance criteria. Preserve read-only requests.`,
     `At most ${settings.maxConcurrency} delegates may run at once. ${settings.mode === "deep" ? "For substantial independent work, aim for two execution delegates and up to six analysis/verification delegates. Split work by file ownership and dependencies." : "Use only the delegates needed for the task; usually one implementer plus independent verification is enough."}`,
     ...(settings.codingMode === "split" ? [`Use ${COLLABORATION_BACKEND} for backend implementation on the collaboration model. The primary executor handles frontend and explicitly scoped backend assistance. Sequence writers of the same file.`] : []),
     "Start independent delegates together in one Task-only tool batch. Wait for upstream work before dependent tasks. Do not concurrently edit the same files.",
-    "The runtime runs an independent read-only review after file writes or shell execution, before your next model response. A failed or inconclusive review requires a repair or a truthful blocked report; only a passing review of the latest work permits completion. There are at most three review attempts per turn.",
-    "After implementation, use the verification model to execute relevant tests; do not confuse a read-only review with executed tests. Report actual evidence and remaining limitations.",
+    "Once collaboration is engaged, the runtime runs an independent read-only review after file writes or shell execution, before your next model response. A failed or inconclusive review requires a repair or a truthful blocked report; only a passing review of the latest work permits completion. There are at most three review attempts per turn. Direct work without delegation does not start an automatic reviewer.",
+    "After delegated implementation, use the verification model to execute relevant tests; do not confuse a read-only review with executed tests. Report actual evidence and remaining limitations.",
   ].join("\n");
 }

@@ -18165,7 +18165,7 @@ host-created files. The full app's file-preview viewer is covered separately.
 #### E2E-CHAT-composer-native-collaboration
 
 - **Preconditions:** Candidate build, temporary profile/workspace, two opted-in provider models; local HTTP fixtures for deterministic checks.
-- **Steps:** Open the composer collaboration control; choose Auto, execution and pro review pins, concurrency 8; save; remount. Switch to Deep and 10; refuse identical pins; fail a save; then turn Off. Start an ordinary coding prompt with the saved mode, implement, review, repair a failed review and review again. Stop during review. Fan out nine Tasks with an eight-slot cap while worktrees are preparing.
+- **Steps:** Open the composer collaboration control; choose Smart, execution and pro review pins, concurrency 8; save; remount. Switch to Always and 10; refuse identical pins; fail a save; then turn Off. Start an ordinary coding prompt with the saved mode, implement, review, repair a failed review and review again. Stop during review. Fan out nine Tasks with an eight-slot cap while worktrees are preparing.
 - **Expected:** Mode and channels persist; permissions do not change; failed save retains the previous value. Native children stay attached to the parent. Review reads the latest files before completion; a failure cannot be claimed as completion; Stop cancels; at most eight delegates start. Off and simple questions preserve direct operation.
 - **Specs:** [Runtime](../03-runtime/02-agent-runtime.md), [composer settings](../04-ux/06-settings-ia.md), [ADR](../../adr/composer-native-collaboration.md).
 - **Acceptance:** All assertions pass; live channel checks are separate from deterministic fixture evidence.
@@ -18176,6 +18176,27 @@ host-created files. The full app's file-preview viewer is covered separately.
 | --- | --- | --- | --- | --- |
 | E2E-CHAT-composer-native-collaboration | Native Task and review gate | Composer picker | Optional collaboration setting | Tests listed above |
 
+
+#### E2E-CHAT-smart-collaboration-routing
+
+- **Preconditions:** Smart mode, configured Claude/pro pins, a development
+  workflow and an isolated workspace/profile.
+- **Steps:** Answer a question, make a narrow edit and run its focused check;
+  then request a substantial frontend/backend change. In a separate turn,
+  begin a direct edit and escalate. Attempt a parent write after collaboration
+  completes, then make a small direct follow-up in the next user turn. Exercise
+  an invalid Task launch and the Read-only review preset. Compare Always mode.
+- **Expected:** Solo tasks produce no native children or automatic review.
+  Escalation retains native children, pinned roles, independent checks and
+  denial of unreviewed parent writes. Previous direct edits are included in
+  Flexible review. A new turn reassesses independently; failed launches do not
+  force collaboration. Read-only presets and host permissions remain intact.
+  Always retains mandatory collaboration for coding. The menu explains the
+  conditional workflow and persists Smart with the existing model pins.
+- **Coverage:** `collaboration-runtime.test.ts` exercises real parent/delegate
+  loops against an HTTP model fixture; composer interaction tests exercise the
+  saved setting. Live model judgment is tested separately with unforced small
+  and substantial requests; fixture responses alone do not prove routing quality.
 
 #### E2E-CHAT-collaboration-workflow
 

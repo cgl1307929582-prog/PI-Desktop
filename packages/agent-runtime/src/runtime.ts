@@ -3429,13 +3429,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         onUpdate,
       ) => {
         if (this.collaborationEnabled() && ["Write", "Edit", "Bash"].includes(toolName)) {
-          if (!this.mutationOwners.has(toolCallId)) {
+          if (this.collaborationRequiresDelegation() && !this.mutationOwners.has(toolCallId)) {
             const next = this.collaborationWorkflowEnabled()
               ? "use CollaborationWorkflow with the complete task"
               : `use Task with ${COLLABORATION_EXECUTOR} for implementation, or collaboration-verifier for tests`;
             throw new Error(`Automatic collaboration requires delegation: ${next}. Use Read/Glob/Grep for parent inspection. The parent cannot execute ${toolName} in this mode.`);
           }
-          if (toolName === "Bash" && isRecord(params) && params.runInBackground === true) {
+          if (this.collaborationRequiresDelegation() && toolName === "Bash" && isRecord(params) && params.runInBackground === true) {
             throw new Error("Background commands cannot be reviewed before completion. Run this command in the foreground in collaboration mode.");
           }
           if (!this.collaborationWorkflowEnabled()) this.collaborationReview.noteTool(toolName, params);
@@ -4650,9 +4650,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       label: "Task",
       description: [
         ...(this.collaborationWorkflowEnabled() ? [
-          "A structured collaboration workflow is selected. Use CollaborationWorkflow to plan and execute the entire task. Direct Task launches are disabled; the workflow owns stages, file scope and acceptance.",
+          `${this.collaboration.mode === "auto" ? "Decide whether collaboration is worthwhile first; prefer direct work for small tasks. If needed, use" : "Use"} CollaborationWorkflow to plan and execute the entire task. Direct Task launches are disabled; the workflow owns stages, file scope and acceptance.`,
         ] : this.collaborationEnabled() ? [
-          `Automatic collaboration is enabled. Delegate implementation and repairs to ${COLLABORATION_EXECUTOR}, independent analysis to ${COLLABORATION_ANALYST}, and test execution to ${COLLABORATION_VERIFIER}. Even small edits use the execution role. Simple questions can be answered directly.`,
+          `${this.collaboration.mode === "auto" ? "Prefer direct work for questions, lookups, small edits and focused tests. Only delegate when substantial parallel work, context savings or independent review justify it, or the user asks. When needed, delegate" : "Delegate"} implementation and repairs to ${COLLABORATION_EXECUTOR}, independent analysis to ${COLLABORATION_ANALYST}, and test execution to ${COLLABORATION_VERIFIER}. Simple questions can be answered directly.`,
           "Use the configured role models without overrides. Start independent tasks together; give each writer a separate file scope. A subagent cannot ask the user questions on your behalf.",
         ] : [
         "Start one subagent in the background and return immediately; you keep working while it runs, then converge with TaskWait when you need its report.\n\nPrefer doing the work yourself. Only delegate when it saves significant context or enables genuine parallelism — not for tasks you can finish in a few tool calls.",
@@ -5291,7 +5291,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return (
       (this.runningDelegations().length > 0 ||
         this.pendingCurrentTurnDelegations().length > 0 ||
-        (this.collaborationEnabled() && this.collaborationReview.pending)) &&
+        (this.collaborationRequiresDelegation() && this.collaborationReview.pending)) &&
       !this.runCancelled &&
       !this.turnHadError
     );
@@ -5462,7 +5462,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.emit({ type: "agent_end", messageIds: [] });
       return;
     }
-    if (this.collaborationEnabled() && this.collaborationReview.pending && !this.runCancelled && !this.turnHadError && !this.runningDelegations().length) {
+    if (this.collaborationRequiresDelegation() && this.collaborationReview.pending && !this.runCancelled && !this.turnHadError && !this.runningDelegations().length) {
       this.terminateParentTurn();
       this.emit({ type: "error", error: { code: "COLLABORATION_REVIEW_FAILED", message: this.collaborationReview.report || "The latest work has not passed independent review.", retriable: true } });
       this.emit({ type: "turn_end" });
@@ -5555,11 +5555,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return this.mode === "agent" && hasCollaborationWorkflow(this.collaboration);
   }
 
+  /** Auto stays direct until this turn actually starts collaboration. */
+  private collaborationRequiresDelegation(): boolean {
+    return this.collaborationEnabled() && (
+      this.collaboration.mode === "deep" || this.collaboration.workflow === "review" ||
+      this.workflowRunning || !!this.workflowResult ||
+      [...this.delegations.values()].some(record => record.startedEpoch === this.turnEpoch)
+    );
+  }
+
   private buildCollaborationWorkflowTool(): AgentTool {
     return {
       name: "CollaborationWorkflow",
       label: "Collaboration workflow",
-      description: `Run the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use once for the complete task. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
+      description: `${this.collaboration.mode === "auto" ? "Optional: decide whether collaboration materially helps first. Handle small tasks and their tests directly without this tool. When needed, run" : "Run"} the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use once for the complete task, including any direct edits already made. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
       parameters: Type.Object({
         task: Type.String({ minLength: 1, maxLength: 16000, description: "Complete task, constraints, agreed API behavior and acceptance criteria." }),
         readOnly: Type.Optional(Type.Boolean({ description: "Analyze, plan or review without implementation or shell commands." })),
@@ -5642,7 +5651,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   /** Review only after all potential writers settle, before another parent response. */
   private async reviewCollaborationWork(signal?: AbortSignal): Promise<void> {
-    if (!this.collaborationEnabled() || this.collaborationWorkflowEnabled() || this.runCancelled || this.disposed) return;
+    if (!this.collaborationRequiresDelegation() || this.collaborationWorkflowEnabled() || this.runCancelled || this.disposed) return;
     const running = this.runningDelegations();
     if (running.length) {
       this.beginDelegationWait(running);
@@ -7047,7 +7056,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   ): Promise<AgentLoopTurnUpdate> {
     await this.reviewCollaborationWork(signal);
     const update = await this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
-    if (this.collaborationEnabled() && this.collaborationReview.report && update.context) {
+    if (this.collaborationRequiresDelegation() && this.collaborationReview.report && update.context) {
       const settled = this.pendingCurrentTurnDelegations().filter((record) => record.status !== "running");
       const reports = formatDelegationResults(settled.map((record) => ({
         delegationId: record.delegationId, agent: record.agentName, status: record.status,

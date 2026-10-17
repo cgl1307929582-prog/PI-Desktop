@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "El modelo principal decide cuándo colaborar: el modo inteligente resuelve cambios pequeños directamente y usa subagentes solo cuando aportan valor.",
       "Flujos de desarrollo guardados con planificación, modelos para frontend y backend, revisión independiente, pruebas y correcciones limitadas.",
       "Activa la colaboración automática entre modelos desde el editor, con proveedores fijos para ejecución y revisión y subagentes en la misma conversación.",
       "Los plugins instalados aparecen como tarjetas en una cuadrícula autoajustable, cada una con una acción clara y su estado de confianza, actualización y alcance a la vista.",

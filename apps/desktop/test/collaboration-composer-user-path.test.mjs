@@ -63,8 +63,10 @@ async function waitFor(fn, message) {
 const button = text => [...document.querySelectorAll("button")].find(el => el.textContent.trim() === text);
 const label = text => [...document.querySelectorAll("button")].find(el => el.getAttribute("aria-label") === text);
 async function click(el) {
-  if (!el) throw new Error("Missing button");
+  if (!el) throw new Error("Missing button. Current UI: " + document.body.innerText);
   if (el.disabled) throw new Error("Button disabled: " + el.textContent);
+  el.scrollIntoView({ block: "nearest" });
+  await settle();
   flushSync(() => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); el.click(); });
   await settle();
 }
@@ -78,7 +80,8 @@ window.collaborationProbe = async () => {
   await settle();
   if (trigger().textContent.trim() !== "Collaboration: Off") throw new Error("Default mode is not off");
   await click(trigger());
-  await click(button("Auto"));
+  await click(button("Smart"));
+  const smartHint = document.body.innerText.includes("only when the model chooses collaboration");
   if (!button("Save collaboration settings").disabled) throw new Error("Missing models should block save");
   await click(label("Primary developer model"));
   const listed = document.body.innerText;
@@ -89,7 +92,7 @@ window.collaborationProbe = async () => {
   await choose("Coding assignment", "Primary frontend · collaboration backend");
   await choose("Maximum concurrent subagents", "8");
   await click(button("Save collaboration settings"));
-  await waitFor(() => trigger().textContent.includes("Auto"), "Saved mode not visible");
+  await waitFor(() => trigger().textContent.trim() === "Collaboration: Smart", "Saved smart mode not visible");
   flushSync(() => window.remount());
   await settle();
   await click(trigger());
@@ -97,7 +100,7 @@ window.collaborationProbe = async () => {
     && label("Collaboration model").textContent.includes("gpt · pro");
   const workflowRestored = label("Workflow").textContent.includes("Standard development")
     && label("Coding assignment").textContent.includes("collaboration backend");
-  await click(button("Deep"));
+  await click(button("Always"));
   await choose("Workflow", "Read-only review");
   const readOnlyAssignmentDisabled = label("Coding assignment").disabled;
   await choose("Workflow", "Deep development");
@@ -120,7 +123,7 @@ window.collaborationProbe = async () => {
   flushSync(() => window.setDisabled(true));
   await settle();
   const disabledWhileRunning = trigger().disabled;
-  return { pinsRestored, workflowRestored, readOnlyAssignmentDisabled, sameModelBlocked, failurePreserved, disabledWhileRunning,
+  return { smartHint, pinsRestored, workflowRestored, readOnlyAssignmentDisabled, sameModelBlocked, failurePreserved, disabledWhileRunning,
     modes: writes.map(value => value.collaboration.mode),
     proPin: writes[0].collaboration.reviewModel,
     concurrency: writes[1].collaboration.maxConcurrency,
@@ -209,7 +212,7 @@ app.whenReady().then(async () => {
     assert(line, output.slice(-6000));
     const result = JSON.parse(line.slice("COLLABORATION_PROBE ".length));
     assert.deepEqual(result, {
-      pinsRestored: true, workflowRestored: true, readOnlyAssignmentDisabled: true,
+      smartHint: true, pinsRestored: true, workflowRestored: true, readOnlyAssignmentDisabled: true,
       sameModelBlocked: true, failurePreserved: true, disabledWhileRunning: true,
       modes: ["auto", "deep", "off"], proPin: "pro/gpt", concurrency: 10, permissionsUnchanged: true,
     });

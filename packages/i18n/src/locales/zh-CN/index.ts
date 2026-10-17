@@ -3,14 +3,15 @@ import { en, type EnglishCatalog } from "../en/index.js";
 export const zhCN = {
   collaboration: {
     title: "多模型协作", trigger: "协作：{{mode}}", mode: "协作模式",
-    off: "关闭", auto: "自动", deep: "深度",
+    off: "关闭", auto: "智能", deep: "始终",
     description: {
       off: "使用主模型的常规工作流程。",
-      auto: "自动委派实现，并独立审查最新改动。简单问答由主模型直接回答。",
-      deep: "按依赖拆分复杂任务，安排执行模型实现，更多使用审查模型进行分析和验证。",
+      auto: "主模型每轮自行判断：小任务直接完成，需要并行分工或独立审查时再协作。判断本身不启动额外子代理。",
+      deep: "代码开发和审查任务始终使用协作。简单问答仍直接回答；复杂独立任务可安排更多子代理。",
     },
     executionModel: "主开发模型", reviewModel: "协作模型", concurrency: "子代理并发上限",
     workflow: "工作流", codingMode: "代码分工",
+    smartWorkflowHint: "仅在模型决定协作时使用此工作流。直接处理时使用当前对话模型及原有操作权限。",
     workflows: { adaptive: "灵活协作", quick: "快速修复", standard: "标准开发", deep: "深度开发", review: "只读审查" },
     codingModes: { primary: "主模型负责开发", split: "主模型前端 · 协作模型后端" },
     workflowHint: "分工模式下，主开发模型负责前端及按文件分配的协助，协作模型也可开发后端。规划、审查和测试由新的协作模型子代理执行；按文件归属和依赖安排并行。",

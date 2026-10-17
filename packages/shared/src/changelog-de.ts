@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Das Hauptmodell entscheidet im intelligenten Modus selbst: kleine Änderungen direkt bearbeiten und Unteragenten nur bei Bedarf starten.",
       "Gespeicherte Entwicklungsabläufe mit Planung, Modellzuweisung für Frontend und Backend, unabhängiger Prüfung, Tests und begrenzten Korrekturen.",
       "Automatische Zusammenarbeit mehrerer Modelle direkt im Eingabebereich: feste Anbieter für Ausführung und Prüfung, mit Unteragenten im selben Gespräch.",
       "Installierte Plugins erscheinen als Karten in einem selbst füllenden Raster, jede mit einer klaren Aktion und sichtbarem Vertrauens-, Update- und Geltungsstatus.",

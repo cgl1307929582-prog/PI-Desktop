@@ -12,7 +12,7 @@ instruction cannot ensure an independent review follows file modifications.
 
 ## Decision
 
-The composer owns an Off / Auto / Deep control and its model/concurrency form.
+The composer owns an Off / Smart / Always control and its model/concurrency form.
 An optional `AppSettings.collaboration` object stores the mode, full
 `provider-id/model-id` execution and review pins, and concurrency (1–10,
 default 8). Missing settings mean Off. Saving affects newly started Agent
@@ -29,11 +29,12 @@ while enabled; existing definitions are preserved on disk and return when Off.
 The same role can be instantiated several times. A new delegation is required
 when a resumed chain's model differs from the configured pin.
 
-The parent coordinates, reads and delegates. Its builtin Write, Edit and Bash
-calls are refused while enabled. Delegate calls retain the existing host
-permission checks. Background Bash is refused because a review cannot wait for
-its eventual effects. Potentially mutating builtin calls invalidate the turn's
-review. Before the next parent model response, the runtime waits for delegates
+Once collaboration is engaged, the parent coordinates, reads and delegates.
+Its builtin Write, Edit and Bash calls are refused. Delegate calls retain the
+existing host permission checks. Background Bash is refused during collaboration
+because a review cannot wait for its eventual effects. Potentially mutating
+builtin calls invalidate the turn's review. Before the next parent model
+response, the runtime waits for delegates
 (including worktree merge-back), starts a pinned read-only native Task, and
 feeds the bounded reports back to the parent. The reviewer must inspect files
 with a tool and return structured pass/fail/inconclusive evidence. Later writes
@@ -45,6 +46,36 @@ Concurrency counts both running delegates and worktrees being prepared. Native
 Task events retain the parent session and parent tool-call identity. No Worker
 session, sidebar conversation, or window is created by this feature.
 
+### On-demand routing
+
+The UI labels are Off / Smart / Always; stored values remain `off` / `auto` /
+`deep`. Smart changes the existing Auto behavior: the current conversation
+model assesses each new user turn itself, without a separate router agent.
+Questions, lookups, narrow low-risk changes and focused checks can use ordinary
+parent tools directly. A coding request or selected workflow alone does not
+require delegation. Substantial independent work, context-heavy exploration,
+non-trivial changes needing independent review, or an explicit collaboration
+request justify delegation. The model briefly explains why it is starting it.
+
+The selected workflow is a conditional recipe in Smart mode. Calling
+`CollaborationWorkflow`, or successfully starting a native Task in Flexible
+mode, engages collaboration for the rest of that turn. Parent builtin
+Write/Edit/Bash are then refused, even after the children finish, and the
+existing model pins, review/test gates, cancellation and concurrency rules apply.
+Flexible review includes earlier direct file/shell activity in the same turn;
+when escalating to a workflow, include earlier changes and checks in its brief.
+An invalid Task call does not engage collaboration. Every new user turn starts
+with a fresh decision, including after a failed or canceled workflow.
+
+Always retains the previous Deep behavior: implementation and code review use
+collaboration; simple questions can remain direct. The Read-only review preset
+keeps parent Write/Edit/Bash disabled in both modes, even for direct analysis.
+Solo work uses the conversation's model, not the configured delegate model,
+and does not automatically create a reviewer or verifier. Choosing the route
+is a model judgment, not a deterministic complexity classifier or a guarantee.
+Off and missing settings retain their existing behavior. No persisted values,
+provider bindings, permissions, database schema or history format change.
+
 ## Consequences
 
 The mode is directly discoverable in the composer. It trades additional model
@@ -53,7 +84,7 @@ requests and review latency for a separate implementation/review loop.
 ### Limits and compatibility
 
 - Decomposition, useful parallelism, and review quality remain model judgments.
-  Deep suggests two execution and up to six analysis/verification jobs; it does
+  Always suggests two execution and up to six analysis/verification jobs; it does
   not create eight jobs for trivial requests. Concurrency is an upper bound.
 - A pass is a source review, not proof of test execution. A verifier can execute
   tests; Bash cannot technically be made read-only by its role prompt.

@@ -97,11 +97,48 @@ it("off preserves direct execution without a reviewer", async () => {
 });
 
 it("blocks parent writes and rejects a different model for the execution role", async () => {
-  const f = await fixture({ parent: [write(), delegate({ model: "pro/review" }), "Unable to execute."] });
+  const f = await fixture({ parent: [write(), delegate({ model: "pro/review" }), "Unable to execute."] }, { ...settings, mode: "deep" });
   await f.runtime.prompt("Please fix app.txt.");
   expect(f.executed).toEqual([]);
   expect(f.requests.every((request) => request.model === "parent")).toBe(true);
   expect(JSON.stringify(f.requests.at(-1)?.messages)).toContain("must use their configured model");
+});
+
+it.each([undefined, "adaptive", "quick", "standard", "deep"] as const)("auto handles a small edit and check directly with preset %s", async (workflow) => {
+  const f = await fixture({ parent: [read, write(), [{ name: "Bash", arguments: { command: "node --test" } }], "Fixed and checked."] }, { ...settings, workflow });
+  await f.runtime.prompt("Correct this one typo in app.txt and run its existing check.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("fixed");
+  expect(f.executed).toEqual(["Read", "Write", "Bash"]);
+  expect(f.requests.every(request => request.model === "parent")).toBe(true);
+  expect(f.events.some(event => event.agentName)).toBe(false);
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+});
+
+it("auto does not engage collaboration after an invalid delegation", async () => {
+  const f = await fixture({ parent: [delegate({ model: "pro/review" }), write(), "Fixed directly."] });
+  await f.runtime.prompt("Fix app.txt.");
+  expect(f.executed).toEqual(["Write"]);
+  expect(f.events.some(event => event.agentName)).toBe(false);
+});
+
+it("auto reviews earlier parent edits after escalating and returns to direct work on the next turn", async () => {
+  const f = await fixture({ parent: [write("partial"), delegate(), write("unreviewed"), "Done.", write("next turn"), "Done directly."], implement: [write(), "Implemented."], review: [read, pass] });
+  await f.runtime.prompt("Fix app.txt, delegating if the change grows.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("fixed");
+  expect(f.requests.some(request => request.model === "review" && JSON.stringify(request.messages).includes("app.txt"))).toBe(true);
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+  const previousRequests = f.requests.length;
+  await f.runtime.prompt("Now make one small follow-up edit.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("next turn");
+  expect(f.requests.slice(previousRequests).every(request => request.model === "parent")).toBe(true);
+}, 15_000);
+
+it("the review preset remains read-only even when auto chooses direct analysis", async () => {
+  const f = await fixture({ parent: [read, write(), [{ name: "Bash", arguments: { command: "touch forbidden" } }], "Analysis only."] }, { ...settings, workflow: "review" });
+  await f.runtime.prompt("Review app.txt without changing anything.");
+  expect(f.executed).toEqual(["Read"]);
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("old");
+  expect(f.events.some(event => event.agentName)).toBe(false);
 });
 
 it("reports an unpassed review as a failed completion", async () => {
@@ -186,6 +223,20 @@ it("workflow runs GPT planning and backend coding, Claude frontend, and fresh GP
   expect(children.every(event => event.sessionId === "collaboration-fixture" && !!event.parentToolCallId)).toBe(true);
   expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
   expect(JSON.stringify(f.events)).toContain('"exitCode":0');
+}, 20_000);
+
+it("auto can escalate to a workflow, blocks unreviewed parent edits afterward, and reassesses next turn", async () => {
+  const parent: Reply[] = [write("partial"), [{ name: "CollaborationWorkflow", arguments: { task: "Complete both files, including the partial parent edit in app.txt." } }], write("unreviewed"), "Workflow finished.", write("follow-up"), "Small follow-up done."];
+  const f = await fixture(request => request.model === "parent" ? parent.shift() ?? "Done." : workflowReply(request), workflowSettings);
+  await f.runtime.prompt("Fix both frontend and backend, collaborating if needed.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("fixed");
+  expect(await readFile(join(f.workspace, "api.txt"), "utf8")).toBe("fixed");
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(3);
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+  const previousRequests = f.requests.length;
+  await f.runtime.prompt("Make one small follow-up edit.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("follow-up");
+  expect(f.requests.slice(previousRequests).every(request => request.model === "parent")).toBe(true);
 }, 20_000);
 
 it("workflow recovers a planner's verification-only task before any native writer starts", async () => {

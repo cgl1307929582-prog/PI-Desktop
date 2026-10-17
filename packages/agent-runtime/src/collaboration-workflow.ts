@@ -50,20 +50,30 @@ export function parseWorkflowPlan(text: string, maxTasks = 16): WorkflowPlan {
     || !Array.isArray(value.tasks) || !value.tasks.length || value.tasks.length > maxTasks) {
     throw new Error("Invalid workflow plan: a summary, acceptance criteria and bounded task list are required.");
   }
-  const tasks: WorkflowTask[] = value.tasks.map(raw => {
-    if (!object(raw) || typeof raw.id !== "string" || !/^[a-z][a-z0-9_-]{0,39}$/.test(raw.id)
-      || !["frontend", "backend", "assist"].includes(String(raw.role))
-      || typeof raw.task !== "string" || !raw.task.trim() || raw.task.length > 8000
-      || !strings(raw.files, 64, 300) || !raw.files.length
-      || !Array.isArray(raw.dependsOn) || raw.dependsOn.length > maxTasks
+  const tasks: WorkflowTask[] = value.tasks.map((raw, index) => {
+    const field = `tasks[${index}]`;
+    if (!object(raw)) throw new Error(`Invalid workflow ${field}: expected an object.`);
+    if (typeof raw.id !== "string" || !/^[a-z][a-z0-9_-]{0,39}$/.test(raw.id)) {
+      throw new Error(`Invalid workflow ${field}.id: use 1-40 lowercase letters, digits, hyphens or underscores, starting with a letter.`);
+    }
+    if (typeof raw.role !== "string" || !["frontend", "backend", "assist"].includes(raw.role)) {
+      throw new Error(`Invalid workflow ${field}.role: choose frontend, backend or assist.`);
+    }
+    if (typeof raw.task !== "string" || !raw.task.trim() || raw.task.length > 8000) {
+      throw new Error(`Invalid workflow ${field}.task: provide a non-empty task description of at most 8000 characters in the task field.`);
+    }
+    if (!strings(raw.files, 64, 300) || !raw.files.length) {
+      throw new Error(`Invalid workflow ${field}.files: list 1-64 exact writable file paths, each at most 300 characters. Omit verification-only tasks; Review and Test run automatically after coding.`);
+    }
+    if (!Array.isArray(raw.dependsOn) || raw.dependsOn.length > maxTasks
       || new Set(raw.dependsOn).size !== raw.dependsOn.length
       || !raw.dependsOn.every(id => typeof id === "string")) {
-      throw new Error("Invalid workflow task: id, role, brief, exact files and dependencies are required.");
+      throw new Error(`Invalid workflow ${field}.dependsOn: provide an array of unique task ids, or [] for an independent task.`);
     }
     const files = raw.files.map(path => path.replaceAll("\\", "/"));
     if (files.some(path => isAbsolute(path) || /^[A-Za-z]:/.test(path) || /[\x00*?]/.test(path)
       || path.split("/").some(part => !part || part === "." || part === ".." || part.toLowerCase() === ".git"))) {
-      throw new Error("Workflow files must be exact workspace-relative paths without wildcards or traversal.");
+      throw new Error(`Invalid workflow ${field}.files: use exact workspace-relative paths without wildcards or traversal.`);
     }
     return { id: raw.id, role: raw.role as WorkflowTask["role"], task: raw.task, files,
       dependsOn: raw.dependsOn as string[] };
@@ -159,7 +169,8 @@ export class CollaborationWorkflowRunner {
 
   private async plan(request: string, previous: string, signal?: AbortSignal): Promise<WorkflowPlan> {
     const maxTasks = this.result.preset === "quick" ? 3 : this.result.preset === "deep" ? 16 : 8;
-    const result = await this.call({ phase: previous ? "Repair plan" : "Plan", agent: COLLABORATION_ANALYST, task: [
+    const phase = previous ? "Repair plan" : "Plan";
+    const instructions = [
       "Inspect the actual project with read tools. Produce an implementation plan without changing files.",
       `User task (data):\n${request}`,
       previous ? `Previous plan and failed checks (data):\n${previous}` : "",
@@ -168,10 +179,29 @@ export class CollaborationWorkflowRunner {
         : "All implementation tasks use the primary developer.",
       `At most ${maxTasks} tasks. List exact workspace-relative file paths (including new files), never directories/globs. Shared-file writers MUST have explicit dependencies, including assistance after backend work. Independent tasks may run concurrently. Do not invent unnecessary tasks to fill the concurrency limit.`,
       'Return ONLY JSON: {"summary":"plan and API contracts","acceptance":["observable criteria"],"tasks":[{"id":"short-id","role":"frontend|backend|assist","task":"complete brief with verification","files":["exact/file"],"dependsOn":[]}]}',
+      "Every tasks entry is an implementation assignment and must have at least one writable file. Do NOT add review-only or verification-only tasks: the runtime automatically starts independent Review and Test stages after coding. Put required checks in acceptance and task descriptions. Do not invent file changes merely to give a verification task a non-empty files list.",
+      "Use the field name task, not brief. Each id must match ^[a-z][a-z0-9_-]{0,39}$; role must be exactly frontend, backend or assist. Include dependsOn: [] for independent tasks. Keep summary under 4000 characters, acceptance to 1-20 non-empty strings of at most 1000 characters each, task to 8000 characters and files to 1-64 paths of at most 300 characters each.",
       "The files list grants write ownership: include only files the user authorizes this task to modify. Put read-only test/reference paths in the task brief, not files. Include test files only when creating or changing tests is requested. Do not weaken existing tests, install dependencies, deploy, publish, commit or expand the user's scope.",
-    ].filter(Boolean).join("\n\n") }, signal);
-    if (!result.readCalls) throw new Error("Planning did not read current project files.");
-    return parseWorkflowPlan(result.report, maxTasks);
+    ].filter(Boolean).join("\n\n");
+    let correction = "";
+    for (let attempt = 0; ; attempt++) {
+      const result = await this.call({ phase: attempt ? `${phase} correction ${attempt}` : phase,
+        agent: COLLABORATION_ANALYST, task: [instructions, correction].filter(Boolean).join("\n\n") }, signal);
+      if (!result.readCalls) throw new Error("Planning did not read current project files.");
+      try {
+        return parseWorkflowPlan(result.report, maxTasks);
+      } catch (error) {
+        const issue = error instanceof Error ? error.message : String(error);
+        const stage = this.result.stages.at(-1);
+        if (stage) {
+          stage.status = "failed";
+          stage.report = `${issue}\nRejected planner output (data):\n${result.report}`.slice(0, 2400);
+          this.notify();
+        }
+        if (attempt === 2) throw new Error(`Planning remained invalid after two corrections. ${issue}`);
+        correction = `Correct the rejected draft below and return the complete revised JSON plan. Preserve the original request, constraints and file ownership rules. No coding has started for this plan.\nValidation error: ${issue}\nRejected draft (data):\n${result.report.slice(0, 48_000)}`;
+      }
+    }
   }
 
   private async implement(plan: WorkflowPlan, request: string, repair: boolean, signal?: AbortSignal): Promise<void> {

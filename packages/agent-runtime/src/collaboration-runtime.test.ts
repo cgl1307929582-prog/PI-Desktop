@@ -187,6 +187,44 @@ it("workflow runs GPT planning and backend coding, Claude frontend, and fresh GP
   expect(JSON.stringify(f.events)).toContain('"exitCode":0');
 }, 20_000);
 
+it("workflow recovers a planner's verification-only task before any native writer starts", async () => {
+  const invalidPlan = JSON.parse(workflowPlan);
+  invalidPlan.tasks.push({ id: "verify", role: "assist", task: "Independently verify.", files: [], dependsOn: ["web", "api"] });
+  const f = await fixture(request => {
+    const context = JSON.stringify(request.messages);
+    if (context.includes("Produce an implementation plan") && !context.includes("Correct the rejected draft")) {
+      return context.includes('"role":"tool"') ? JSON.stringify(invalidPlan) : read;
+    }
+    return workflowReply(request);
+  }, workflowSettings);
+  await f.runtime.prompt("Fix both files and independently verify.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("fixed");
+  expect(await readFile(join(f.workspace, "api.txt"), "utf8")).toBe("fixed");
+  const correction = f.requests.findIndex(request => JSON.stringify(request.messages).includes("Correct the rejected draft"));
+  const coding = f.requests.findIndex(request => JSON.stringify(request.messages).includes("Your assignment:"));
+  expect(correction).toBeGreaterThan(-1);
+  expect(coding).toBeGreaterThan(correction);
+  expect(JSON.stringify(f.requests[correction].messages)).toContain("tasks[2].files");
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
+  expect(f.executed).toContain("Bash");
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+  expect(f.events.filter(event => event.agentName).every(event => event.sessionId === "collaboration-fixture" && !!event.parentToolCallId)).toBe(true);
+}, 20_000);
+
+it("workflow stops after bounded invalid-plan corrections without giving any child write access", async () => {
+  const invalidPlan = JSON.parse(workflowPlan);
+  invalidPlan.tasks[0].files = [];
+  const f = await fixture(request => {
+    if (request.model === "review") return JSON.stringify(request.messages).includes('"role":"tool"') ? JSON.stringify(invalidPlan) : read;
+    return workflowReply(request);
+  }, workflowSettings);
+  await f.runtime.prompt("Fix both files.");
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("old");
+  expect(f.executed).toEqual(["Read", "Read", "Read"]);
+  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED")).toBe(true);
+  expect(JSON.stringify(f.events)).toContain("Planning remained invalid after two corrections");
+}, 20_000);
+
 it("workflow blocks direct Task bypass and out-of-scope file edits", async () => {
   const direct = await fixture({ parent: [delegate(), "Cannot bypass workflow."] }, workflowSettings);
   await direct.runtime.prompt("Fix files.");

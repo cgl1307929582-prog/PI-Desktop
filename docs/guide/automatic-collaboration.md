@@ -57,6 +57,18 @@ on the same file. Cyclic, unknown or unordered overlapping dependencies fail
 before coding. Builtin Write/Edit enforce each task's declared exact file scope.
 Shell permissions remain host-owned; file ownership is not a shell sandbox.
 
+Planner task entries describe implementation only and must each own at least one
+exact writable file. Independent review and test execution are runtime-owned
+stages, not extra tasks with empty file lists. When an initial or repair plan
+fails JSON/schema/dependency validation, the runtime names the invalid field or
+constraint, marks that planning attempt failed, and requests a fresh complete
+plan from the pinned read-only planner, at most twice. No implementation starts
+for that plan until validation succeeds. Corrections preserve the original task
+and write-scope constraints and do not consume the two code-repair rounds.
+Provider failures and missing source reads are not format retries. Stop cancels
+correction as well as planning; repeated workflow calls still reuse the current
+turn's result rather than repeating edits.
+
 Each check returns structured evidence. Source review requires an observed successful
 Read of current files; listing filenames alone cannot pass. Its verdict covers source
 correctness, while the separate Test stage owns command execution.

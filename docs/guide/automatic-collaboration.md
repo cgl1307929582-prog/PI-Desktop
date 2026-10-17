@@ -6,7 +6,7 @@ description: Choose execution and review models from the composer in this fork.
 # Automatic model collaboration
 
 In Agent mode, select **Collaboration: Off** beside the permission control at
-the bottom of the composer. Choose **Auto** or **Deep**, select a primary developer
+the bottom of the composer. Choose **Smart** or **Always**, select a primary developer
 model and a collaboration model, choose a maximum concurrency, then save.
 The selection applies to new Agent turns on this installation and survives
 restart. You do not need to type a trigger phrase. To return to the usual
@@ -18,12 +18,15 @@ identifies the account/channel. Both models must be enabled for subagents in
 model settings. A removed or disabled binding prevents launch instead of
 silently choosing another channel.
 
-- **Auto:** small tasks use a small team; simple questions remain direct.
-- **Deep:** encourages parallel analysis, implementation and verification where
-  the work can be split. Default concurrency is 8, adjustable from 1 to 10.
+- **Smart:** the current model decides each turn. Questions, lookups, small
+  edits and focused tests normally stay direct. Complex independent work,
+  high-risk changes needing independent review, or your explicit request can
+  start collaboration. No extra agent is used just to decide.
+- **Always:** coding and review tasks use collaboration; simple questions stay
+  direct. Default concurrency is 8, adjustable from 1 to 10.
 - **Native children:** expand the Task group within the current conversation
   to inspect roles, models and results. They do not appear as sidebar chats.
-- **Review:** changes made with builtin file/shell tools trigger an independent
+- **Review:** after collaboration starts, builtin file/shell changes trigger an independent
   source review before the parent's next response. Failed review can lead to
   repair and another review, up to three attempts. Test execution is reported
   separately.
@@ -34,6 +37,14 @@ a turn runs or outside the local Agent composer. More concurrency can cost
 more and still depends on the channels' own rate limits. Review is assistance,
 not a guarantee; plugin/MCP mutations and edits outside the running turn are
 outside the builtin review gate.
+
+In Smart mode the workflow is used only when collaboration is chosen. Solo work
+uses the current conversation model and normal permissions, without automatic
+review/test children. Once collaboration starts, its gates remain active until
+the turn ends; the next user message gets a new decision. The Read-only review
+preset always prohibits parent file writes and shell commands. Switch to Always
+when you want coding tasks to follow the selected workflow every time. Existing
+Auto/Deep settings map to Smart/Always without changing their model pins.
 
 ## Workflow presets and coding assignment
 

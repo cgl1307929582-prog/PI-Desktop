@@ -1,14 +1,15 @@
 export const en = {
   collaboration: {
     title: "Multi-model collaboration", trigger: "Collaboration: {{mode}}", mode: "Collaboration mode",
-    off: "Off", auto: "Auto", deep: "Deep",
+    off: "Off", auto: "Smart", deep: "Always",
     description: {
       off: "Use the main model's normal workflow.",
-      auto: "Delegate implementation automatically, then independently review the latest work. Simple questions stay with the main model.",
-      deep: "Split substantial work across execution and review models, using more analysis and verification delegates when tasks are independent.",
+      auto: "The main model decides each turn: handle small tasks directly, and collaborate when parallel work or independent review is useful. No extra agent is started to make this decision.",
+      deep: "Always use collaboration for coding and review tasks. Simple questions stay direct; substantial independent work can use more delegates.",
     },
     executionModel: "Primary developer model", reviewModel: "Collaboration model", concurrency: "Maximum concurrent subagents",
     workflow: "Workflow", codingMode: "Coding assignment",
+    smartWorkflowHint: "This workflow is used only when the model chooses collaboration. Direct work uses the current conversation model and its normal permissions.",
     workflows: { adaptive: "Flexible collaboration", quick: "Quick fix", standard: "Standard development", deep: "Deep development", review: "Read-only review" },
     codingModes: { primary: "Primary model writes code", split: "Primary frontend · collaboration backend" },
     workflowHint: "With split coding, the primary developer owns frontend and scoped assistance; the collaboration model also implements backend. Planning, reviews and tests use fresh collaboration-model agents. File dependencies determine parallelism.",

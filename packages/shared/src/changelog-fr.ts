@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Le modèle principal décide quand collaborer : le mode intelligent traite directement les petites modifications et ne lance des sous-agents que si nécessaire.",
       "Des workflows enregistrés avec planification, modèles dédiés au frontend et au backend, revue indépendante, tests et corrections limitées.",
       "Activez la collaboration automatique entre modèles depuis la zone de saisie, avec des fournisseurs fixes pour l’exécution et la revue, et des sous-agents dans la même conversation.",
       "Les plugins installés s'affichent en cartes dans une grille auto-adaptative, chacune avec une action claire et son état de confiance, de mise à jour et de portée visible.",

@@ -1030,11 +1030,41 @@ the current window width:
 ## Composer collaboration control (fork)
 
 The optional `AppSettings.collaboration` setting is controlled from the composer,
-beside permissions, with Off / Auto / Deep, two explicit model pins and a 1–10
+beside permissions, with Off / Smart / Always, two explicit model pins and a 1–10
 concurrency limit (default 8). It applies to new local Agent turns without a
 trigger phrase. See [the ADR](../../adr/composer-native-collaboration.md) for
 validation, native child visibility, review lifecycle, compatibility and limits,
 and [the user guide](../../guide/automatic-collaboration.md) for setup.
+
+### On-demand routing
+
+The UI labels are Off / Smart / Always; stored values remain `off` / `auto` /
+`deep`. Smart changes the existing Auto behavior: the current conversation
+model assesses each new user turn itself, without a separate router agent.
+Questions, lookups, narrow low-risk changes and focused checks can use ordinary
+parent tools directly. A coding request or selected workflow alone does not
+require delegation. Substantial independent work, context-heavy exploration,
+non-trivial changes needing independent review, or an explicit collaboration
+request justify delegation. The model briefly explains why it is starting it.
+
+The selected workflow is a conditional recipe in Smart mode. Calling
+`CollaborationWorkflow`, or successfully starting a native Task in Flexible
+mode, engages collaboration for the rest of that turn. Parent builtin
+Write/Edit/Bash are then refused, even after the children finish, and the
+existing model pins, review/test gates, cancellation and concurrency rules apply.
+Flexible review includes earlier direct file/shell activity in the same turn;
+when escalating to a workflow, include earlier changes and checks in its brief.
+An invalid Task call does not engage collaboration. Every new user turn starts
+with a fresh decision, including after a failed or canceled workflow.
+
+Always retains the previous Deep behavior: implementation and code review use
+collaboration; simple questions can remain direct. The Read-only review preset
+keeps parent Write/Edit/Bash disabled in both modes, even for direct analysis.
+Solo work uses the conversation's model, not the configured delegate model,
+and does not automatically create a reviewer or verifier. Choosing the route
+is a model judgment, not a deterministic complexity classifier or a guarantee.
+Off and missing settings retain their existing behavior. No persisted values,
+provider bindings, permissions, database schema or history format change.
 
 ## Workflow presets and coding assignment
 

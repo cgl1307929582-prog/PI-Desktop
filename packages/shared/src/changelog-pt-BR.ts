@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "O modelo principal decide quando colaborar: o modo inteligente resolve pequenas alterações diretamente e inicia subagentes apenas quando são úteis.",
       "Fluxos de desenvolvimento salvos com planejamento, modelos para frontend e backend, revisão independente, testes e correções limitadas.",
       "Ative a colaboração automática entre modelos pelo editor, com provedores fixos para execução e revisão e subagentes na mesma conversa.",
       "Os plugins instalados aparecem como cartões em uma grade de preenchimento automático, cada um com uma ação clara e o estado de confiança, atualização e escopo à vista.",

@@ -29,6 +29,76 @@ it("guards writes to a task's assigned files, including absolute paths", () => {
   expect(() => assertWorkflowWritePath(["src/api.ts"], "src/web.ts", "/repo")).toThrow("assigned files");
 });
 
+it("identifies the verification-only task's empty files without misnaming task as brief", () => {
+  const invalid = plan([task("api", "backend"), task("independent-verification", "assist", [], ["api"])]);
+  expect(() => parseWorkflowPlan(invalid)).toThrow(/tasks\[1\]\.files.*Review and Test/);
+});
+
+it("names the invalid task field instead of suggesting a different schema", () => {
+  for (const [field, value] of [["id", "Not A Valid ID"], ["role", "reviewer"], ["task", ""], ["dependsOn", null]]) {
+    const invalid = JSON.stringify({ summary: "Fix", acceptance: ["Works"], tasks: [{ ...task("api"), [field as string]: value }] });
+    expect(() => parseWorkflowPlan(invalid)).toThrow(`tasks[0].${field}`);
+  }
+});
+
+it("corrects a rejected plan before starting coding, then performs fresh review and tests", async () => {
+  const jobs: WorkflowJob[] = [];
+  let plans = 0;
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    jobs.push(job);
+    if (job.phase.startsWith("Plan")) {
+      if (++plans === 1) return result(plan([task("api", "backend"), task("verify", "assist", [], ["api"])]));
+      expect(job.task).toContain("tasks[1].files");
+      expect(jobs.some(item => item.phase.startsWith("Coding"))).toBe(false);
+      return result(plan([task("api", "backend")]));
+    }
+    return result(pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  const output = await runner.run("Fix the API and independently verify it.");
+  expect(output.status).toBe("completed");
+  expect(output.stages.map(stage => stage.phase)).toEqual(["Plan", "Plan correction 1", "Coding · backend · api", "Review", "Test"]);
+  expect(output.stages[0].status).toBe("failed");
+  expect(output.stages[0].report).toContain("tasks[1].files");
+  expect(output.repairRounds).toBe(0);
+});
+
+it("corrects a repair plan without skipping checks or consuming another code repair round", async () => {
+  let tests = 0;
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase === "Repair plan") return result(plan([task("verify", "assist", [])]));
+    if (job.phase === "Plan" || job.phase === "Repair plan correction 1") return result(plan([task("api", "backend")]));
+    if (job.phase === "Test") return result(pass, [{ ...testCommand, exitCode: ++tests === 1 ? 1 : 0 }]);
+    return result(pass);
+  }, () => {});
+  const output = await runner.run("Fix the API.");
+  expect(output.status).toBe("completed");
+  expect(output.repairRounds).toBe(1);
+  expect(output.stages.filter(stage => stage.phase.startsWith("Fix"))).toHaveLength(1);
+  expect(output.stages.filter(stage => stage.phase === "Review")).toHaveLength(2);
+  expect(tests).toBe(2);
+});
+
+it("does not retry provider failures or planning without source reads as a format correction", async () => {
+  for (const response of [{ ...result("Provider failed."), status: "failed" }, { ...result(plan([task("api")])), readCalls: 0 }]) {
+    const runner = new CollaborationWorkflowRunner(settings, async () => response, () => {});
+    const output = await runner.run("Fix the API.");
+    expect(output.status).toBe("failed");
+    expect(output.stages).toHaveLength(1);
+  }
+});
+
+it("Stop during a correction prevents coding and any further planner retry", async () => {
+  const abort = new AbortController();
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase === "Plan") return result(plan([task("verify", "assist", [])]));
+    abort.abort();
+    return result(plan([task("api", "backend")]));
+  }, () => {});
+  const output = await runner.run("Fix the API.", false, abort.signal);
+  expect(output.status).toBe("cancelled");
+  expect(output.stages.map(stage => stage.phase)).toEqual(["Plan", "Plan correction 1"]);
+});
+
 it("runs Claude frontend and assistance, GPT backend, with dependencies and fresh GPT checks", async () => {
   const jobs: WorkflowJob[] = [];
   const finished = new Set<string>();
@@ -116,7 +186,9 @@ it("quick development rejects an oversized plan before coding", async () => {
     result(plan([task("a"), task("b"), task("c"), task("d")])), () => {});
   const output = await runner.run("Fix a small issue.");
   expect(output.status).toBe("failed");
-  expect(output.stages).toHaveLength(1);
+  expect(output.stages).toHaveLength(3);
+  expect(output.stages.every(stage => stage.agent === "collaboration-analyst" && stage.status === "failed")).toBe(true);
+  expect(output.error).toContain("after two corrections");
 });
 
 it("the review preset remains read-only even when an implementation task is sent", async () => {

@@ -1270,3 +1270,34 @@ retries and images retain physical account/model attribution. Nested immediate
 parent and owning Task remain distinct. The migration does not add coding-agent
 AgentSession, Codemode or virtual routing. See the coding-agent design review for
 future adoption conditions.
+
+## 输入框原生协作（本 fork）
+
+可选的 `AppSettings.collaboration` 由输入框底栏控制，与权限选择相邻。
+提供关闭、自动、深度模式，两个明确的渠道模型绑定和 1～10 并发上限（默认 8）。
+保存后在下一轮本地智能体任务生效，无需触发词。验证、子代理展示、审查生命周期、
+兼容性及限制见 [ADR](/adr/composer-native-collaboration)，设置方法见
+[使用指南](/zh-CN/guide/automatic-collaboration)。
+
+## 工作流与代码分工
+
+在同一个协作菜单里选择工作流：灵活协作、快速修复、标准开发、深度开发或
+只读审查。旧配置默认保持灵活协作。代码分工可选主模型开发，或“主模型前端 ·
+协作模型后端”：例如 Claude 写前端和按文件分配的辅助任务，pro GPT 写后端。
+规划、审查和测试仍由新的 pro GPT 子代理执行，开发上下文不会给自己验收。
+
+标准流程是：规划 → 按依赖开发 → 独立审查和实际测试 → 必要时修复 → 重新检查 →
+交付。深度开发增加方案审查、回归审查和边界测试。快速修复最多规划三个开发
+任务，标准开发八个，深度开发十六个；同时运行数量仍受菜单中的并发上限控制。
+没有依赖、文件不重叠的任务可以并行；同一文件的开发和协助必须先后执行。
+计划中的循环依赖、未知依赖、未排序的文件冲突会在写入前被拒绝。
+
+源码审查需要实际读取文件，测试阶段还必须有真实 Bash 执行记录且退出码为零。
+仅口头声称通过不能验收。失败后最多修复两轮，每次都重新检查；无法验证或
+仍有问题会明确停止。只读请求和只读审查预设不会启动写代码或运行命令的角色。
+停止会取消当前子任务并阻止后续阶段，重复调用同一轮工作流不会重复修改文件。
+
+阶段、计划、命令和结果保存在当前对话的工具历史中，子代理仍位于当前对话，
+不会创建侧栏聊天。内置 Write/Edit 会核对任务的文件归属，Bash 沿用现有操作权限，
+不能视为按文件隔离的沙箱。重启后配置和历史保留，但中断的流程不会自动续跑；
+需先检查已有改动再重新运行。当前不包含任意脚本导入、工作流编辑器或跨进程续跑。

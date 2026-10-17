@@ -3,6 +3,10 @@ import { join } from "node:path";
 
 import {
   ErrorCodes,
+  collaborationSettings,
+  collaborationDefinitions,
+  unavailableCollaborationModels,
+  MAX_SUBAGENT_DEFINITIONS,
   OAUTH_AUTH_KIND,
   isActiveInProject,
   isCommandShellCatalog,
@@ -308,6 +312,17 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
       userDocuments: await activeUserSubagentDocuments(projectPath),
       disabledBuiltins: await disabledBuiltinSubagents(),
     });
+    const sessionMode = typeof session.mode === "string" ? session.mode : undefined;
+    const defaultMode = typeof settings.defaultMode === "string" ? settings.defaultMode : undefined;
+    const mode = normalizeMode(overrides.mode ?? sessionMode ?? defaultMode ?? "agent");
+    const collaboration = collaborationSettings(settings.collaboration);
+    const roles = mode === "agent" ? collaborationDefinitions(collaboration) : [];
+    if (roles.length) {
+      const unavailable = unavailableCollaborationModels(collaboration, providers.providers);
+      if (unavailable.length) throw Object.assign(new Error("Collaboration models are unavailable or no longer enabled for subagents. Update the collaboration model selection."), { errorCode: "MODEL_NOT_CONFIGURED" });
+      const reserved = new Set(roles.map((role) => role.name));
+      subagentCatalog.definitions = [...roles, ...subagentCatalog.definitions.filter((role) => !reserved.has(role.name))].slice(0, MAX_SUBAGENT_DEFINITIONS);
+    }
     const subagentBindings = await resolveSubagentProviders({
       definitions: subagentCatalog.definitions,
       providers: providers.providers,
@@ -318,6 +333,9 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
         return { modelConfig: resolved.modelConfig, capabilities: resolved.capabilities };
       },
     });
+    if (roles.length && [collaboration.executionModel, collaboration.reviewModel].some((key) => !subagentBindings.providers[key])) {
+      throw Object.assign(new Error("A collaboration model could not be resolved. Check its provider credentials and model configuration."), { errorCode: "MODEL_NOT_CONFIGURED" });
+    }
     const subagentModelKeys: string[] = [];
     for (const row of providers.providers) {
       if (!row.enabled) continue;
@@ -364,15 +382,13 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
       log("warn", "subagent definitions have problems", { sessionId, diagnostics: subagentDiagnostics });
     }
 
-    const sessionMode = typeof session.mode === "string" ? session.mode : undefined;
-    const defaultMode = typeof settings.defaultMode === "string" ? settings.defaultMode : undefined;
     return {
       providerId: provider.id,
       modelId,
       projectPath,
       sidecarParams: {
         sessionId,
-        mode: normalizeMode(overrides.mode ?? sessionMode ?? defaultMode ?? "agent"),
+        mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
@@ -400,6 +416,7 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
         pluginTools: [],
         pluginSkills,
         trustedExtensions: [],
+        collaboration,
         subagents: subagentCatalog.definitions,
         subagentProviders: subagentBindings.providers,
         subagentModelKeys,

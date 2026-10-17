@@ -1876,3 +1876,53 @@ retries and images retain physical account/model attribution. Nested immediate
 parent and owning Task remain distinct. The migration does not add coding-agent
 AgentSession, Codemode or virtual routing. See the coding-agent design review for
 future adoption conditions.
+
+## Automatic native collaboration (fork)
+
+The optional `AppSettings.collaboration` setting is controlled from the composer,
+beside permissions, with Off / Auto / Deep, two explicit model pins and a 1–10
+concurrency limit (default 8). It applies to new local Agent turns without a
+trigger phrase. See [the ADR](../../adr/composer-native-collaboration.md) for
+validation, native child visibility, review lifecycle, compatibility and limits,
+and [the user guide](../../guide/automatic-collaboration.md) for setup.
+
+## Workflow presets and coding assignment
+
+The same composer menu stores optional `workflow` and `codingMode` fields.
+Missing fields retain flexible collaboration and primary-model implementation.
+Presets are Flexible, Quick fix, Standard development, Deep development and
+Read-only review. Coding can use the primary model alone, or assign frontend
+and scoped assistance to the primary model and backend implementation to the
+collaboration model. Planning, independent source reviews and test execution
+always use fresh collaboration-model contexts. Both models can therefore write
+code without allowing the implementation context to approve its own work.
+
+Structured presets expose `CollaborationWorkflow`. For development the runtime
+executes Plan → dependency-ordered Coding → Review + Test → bounded Fix → fresh
+checks → Complete. Deep adds a plan review, regression review and boundary tests.
+Quick bounds the plan to three tasks; Standard allows eight and Deep sixteen.
+The active concurrency setting is shared by every stage, including worktree
+preparation. Independent tasks run together; shared-file writers require a
+validated dependency. A primary-model assistance task can follow a backend task
+on the same file. Cyclic, unknown or unordered overlapping dependencies fail
+before coding. Builtin Write/Edit enforce each task's declared exact file scope.
+Shell permissions remain host-owned; file ownership is not a shell sandbox.
+
+Each check returns structured evidence. Source review requires an observed successful
+Read of current files; listing filenames alone cannot pass. Its verdict covers source
+correctness, while the separate Test stage owns command execution.
+Test verification additionally requires observed Bash results with exit code zero.
+A claim without executed commands cannot pass. A failed check produces a fresh
+repair plan, followed by coding and both checks, at most twice. Missing evidence,
+provider failures and unresolved checks block successful delivery. Read-only
+requests and the review preset use only the read-only analyst. Direct parent
+Task calls cannot bypass a selected structured workflow. Stop aborts native
+children and prevents later stages. Repeated workflow calls within one turn
+return the same result rather than repeating edits.
+
+Stage progress, plans, commands and results are recorded in ordinary tool history.
+Children remain native Tasks in the current conversation; no Worker session or
+sidebar conversation is created. Completed settings/history survive restart.
+An interrupted workflow is not automatically resumed after runtime restart;
+inspect the existing changes before starting a new run. Arbitrary workflow scripts,
+workflow editing and cross-process durable resume are not part of these presets.

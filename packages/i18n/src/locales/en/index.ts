@@ -1,4 +1,22 @@
 export const en = {
+  collaboration: {
+    title: "Multi-model collaboration", trigger: "Collaboration: {{mode}}", mode: "Collaboration mode",
+    off: "Off", auto: "Auto", deep: "Deep",
+    description: {
+      off: "Use the main model's normal workflow.",
+      auto: "Delegate implementation automatically, then independently review the latest work. Simple questions stay with the main model.",
+      deep: "Split substantial work across execution and review models, using more analysis and verification delegates when tasks are independent.",
+    },
+    executionModel: "Primary developer model", reviewModel: "Collaboration model", concurrency: "Maximum concurrent subagents",
+    workflow: "Workflow", codingMode: "Coding assignment",
+    workflows: { adaptive: "Flexible collaboration", quick: "Quick fix", standard: "Standard development", deep: "Deep development", review: "Read-only review" },
+    codingModes: { primary: "Primary model writes code", split: "Primary frontend · collaboration backend" },
+    workflowHint: "With split coding, the primary developer owns frontend and scoped assistance; the collaboration model also implements backend. Planning, reviews and tests use fresh collaboration-model agents. File dependencies determine parallelism.",
+    chooseModel: "Choose a model", unavailableModel: "Unavailable: {{model}}",
+    modelHint: "Select two different models enabled for subagents in model settings. The provider name identifies the channel.",
+    scope: "Saved for Agent mode on this installation; applies to newly started turns. Permission mode is unchanged. Review failure stops completion after at most three attempts.",
+    save: "Save collaboration settings",
+  },
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "New isolated session",

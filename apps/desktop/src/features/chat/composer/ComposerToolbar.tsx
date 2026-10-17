@@ -1,3 +1,5 @@
+import { ComposerCollaborationPicker } from "./ComposerCollaborationPicker";
+import "../../../styles/composer-collaboration.css";
 import type { Dispatch, SetStateAction } from "react";
 import type { TFunction } from "i18next";
 import {
@@ -181,6 +183,10 @@ export function ComposerToolbar({
                   });
                 }
           }} />
+        {localToolsAllowed ? <ComposerCollaborationPicker
+          disabled={controlsBlocked || runActive || mode !== "agent"}
+          onOpen={() => { modelMenu.setOpen(false); setPermissionOpen(false); }}
+        /> : null}
         {localToolsAllowed ? <ComposerControlSlots side="left" /> : null}
       </div>
 

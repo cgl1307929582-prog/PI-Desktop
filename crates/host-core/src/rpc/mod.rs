@@ -1148,6 +1148,9 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if let Err(message) = crate::collaboration::validate_settings(value) {
+        return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+    }
     if let Err(message) = crate::network_proxy::validate_network_proxy(value) {
         return Err(rpc_err(1002, message, "INVALID_PARAMS"));
     }
@@ -7424,6 +7427,46 @@ mod tests {
         assert!(content.contains("temporary"), "{content}");
         assert_eq!(read.content["tag"].as_str().unwrap().len(), 4);
         assert!(!active_project.join("notes.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn collaboration_settings_roundtrip_and_reject_invalid_updates() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let config = json!({"mode":"deep", "executionModel":"claude/opus", "reviewModel":"pro/gpt", "maxConcurrency":8});
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({"collaboration":config}),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let saved = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(saved["collaboration"], config);
+        for invalid in [
+            json!(null),
+            json!({"mode":"auto"}),
+            json!({"mode":"deep", "executionModel":"claude/opus", "reviewModel":"pro/gpt", "maxConcurrency":11}),
+        ] {
+            assert!(handle_request(
+                state.clone(),
+                "settings.set",
+                json!({"collaboration":invalid}),
+                tx.clone()
+            )
+            .await
+            .is_err());
+        }
+        let unchanged = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert_eq!(unchanged["collaboration"], config);
     }
 
     #[tokio::test]

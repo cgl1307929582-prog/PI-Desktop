@@ -5,6 +5,8 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Gespeicherte Entwicklungsabläufe mit Planung, Modellzuweisung für Frontend und Backend, unabhängiger Prüfung, Tests und begrenzten Korrekturen.",
+      "Automatische Zusammenarbeit mehrerer Modelle direkt im Eingabebereich: feste Anbieter für Ausführung und Prüfung, mit Unteragenten im selben Gespräch.",
       "Installierte Plugins erscheinen als Karten in einem selbst füllenden Raster, jede mit einer klaren Aktion und sichtbarem Vertrauens-, Update- und Geltungsstatus.",
       "Öffentliche Bewertungen und Rezensionen für Marketplace-Plugins lesen und im Plugin-Center eine schreiben — die Desktop-App meldet sich nie an.",
       "Lange Bash-Befehle laufen nach dem Agenten-Turn als Hintergrundaufgaben weiter; ihre Ausgabe lässt sich später prüfen.",

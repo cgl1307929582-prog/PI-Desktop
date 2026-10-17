@@ -248,3 +248,12 @@ test("a user-pinned context window is never replaced by the catalog number (#117
   }).models;
   assert.equal(inherited[0].contextWindow, 128_000, "a catalog-sourced window follows the published value");
 });
+
+test("collaboration settings reject malformed writes before host IPC", async () => {
+  const { runtime } = await fixtureRuntime();
+  const collaboration = { mode: "auto", executionModel: "claude/opus", reviewModel: "pro/gpt", maxConcurrency: 8 };
+  assert.deepEqual(runtime.validateSettingsWrite({ collaboration }), { collaboration });
+  for (const invalid of [null, {}, { ...collaboration, maxConcurrency: 11 }, { ...collaboration, reviewModel: "claude/opus" }]) {
+    assert.throws(() => runtime.validateSettingsWrite({ collaboration: invalid }), { errorCode: "INVALID_PARAMS" });
+  }
+});

@@ -1,3 +1,4 @@
+import { isCollaborationSettings } from "@pi-desktop/shared";
 import {
   ErrorCodes as SharedErrorCodes,
   SESSION_THINKING_LEVELS,
@@ -183,6 +184,9 @@ export function createProviderCatalogRuntime({
   const validateSettingsWrite = <T>(settings: T): T => {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
       return settings;
+    }
+    if ("collaboration" in settings && !isCollaborationSettings(settings.collaboration)) {
+      throw Object.assign(new Error("collaboration settings are invalid"), { errorCode: ErrorCodes.INVALID_PARAMS });
     }
     const value = settings as T & {
       defaultCommandShell?: unknown;

@@ -38,6 +38,8 @@ export type JevKeyCheckResult = {
 export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type AppSettings = {
+  /** Native multi-model collaboration; absent keeps existing independent behavior. */
+  collaboration?: import("../collaboration.js").CollaborationSettings;
   imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
   /** All models marked for image generation; absent falls back to imageGeneration. */
   imageGenerationModels?: import("../image-generation.js").ImageGenerationBinding[] | null;

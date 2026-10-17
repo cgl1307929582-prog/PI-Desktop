@@ -13,6 +13,7 @@ inspectable while still making everyday coding work feel direct.
 
 | If you want to… | Start with |
 |---|---|
+| Configure automatic model teamwork | [Automatic collaboration](/guide/automatic-collaboration) |
 | See what the app looks like | [Screens](/guide/screenshots) |
 | Run recurring local tasks | [Scheduled tasks](/guide/automations) |
 | Add an MCP catalog and its key | [MCP market](/guide/mcp-market) |

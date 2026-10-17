@@ -120,6 +120,7 @@ type RuntimeParams = {
   subagentProviders?: Record<string, RuntimeProviderConfig>;
   /** Opted-in override keys, separate from definition-only pinned bindings. */
   subagentModelKeys?: string[];
+  collaboration?: import("@pi-desktop/shared").CollaborationSettings;
   scratchDir?: string;
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
@@ -234,6 +235,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     subagentModelKeys,
+    collaboration: params.collaboration,
     jevApiKey: params.jevApiKey,
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
@@ -311,6 +313,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     subagentModelKeys,
+    collaboration: params.collaboration,
     projectPath: params.projectPath,
     remoteWorkspace: params.remoteWorkspace,
     workspaceRoot: params.workspaceRoot,

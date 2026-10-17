@@ -143,3 +143,20 @@ describe("createHeadlessLaunchResolver", () => {
     await expect(offline.resolve("s1", {}, {})).rejects.toMatchObject({ errorCode: "HOST_UNAVAILABLE" });
   });
 });
+
+it("resolves collaboration pins by provider identity and rejects removed opt-in", async () => {
+  const execution = { ...provider, id: "claude", models: [{ id: "opus", availableForSubagents: true, thinkingLevels: ["off"] }] };
+  const pro = { ...provider, id: "pro", name: "pro", models: [{ id: "gpt", availableForSubagents: true, thinkingLevels: ["off"] }] };
+  const other = { ...pro, id: "other", name: "other" };
+  const { host } = hostWith([execution, other, pro], { claude: "test", pro: "test", other: "test" });
+  const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
+  const collaboration = { mode: "deep", executionModel: "claude/opus", reviewModel: "pro/gpt", maxConcurrency: 8 };
+  const launch = await resolver.resolve("s1", { providerId: "claude", modelId: "opus" }, { collaboration });
+  expect(launch.sidecarParams.collaboration).toEqual(collaboration);
+  expect(launch.sidecarParams.subagents?.find(role => role.name === "collaboration-analyst")?.model).toEqual({ providerId: "pro", modelId: "gpt" });
+  expect(launch.sidecarParams.subagentProviders?.["pro/gpt"]?.id).toBe("pro");
+  const plan = await resolver.resolve("s1", { providerId: "claude", modelId: "opus", mode: "plan" }, { collaboration });
+  expect(plan.sidecarParams.subagents?.some(role => role.name.startsWith("collaboration-"))).toBe(false);
+  pro.models[0].availableForSubagents = false;
+  await expect(resolver.resolve("s1", { providerId: "claude", modelId: "opus" }, { collaboration })).rejects.toMatchObject({ errorCode: "MODEL_NOT_CONFIGURED" });
+});

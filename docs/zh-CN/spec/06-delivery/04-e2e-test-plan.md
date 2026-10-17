@@ -5723,6 +5723,7 @@ eleven-tool-round desktop paths are verified by
 ## 8. 可追溯性矩阵
 | 验收 | 应用场景 |
 |---|---|
+| C / E / Quality — 输入框原生协作 | E2E-CHAT-composer-native-collaboration |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice 四阶段交互 | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
@@ -9746,3 +9747,29 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **关联规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`、ADR 0294、D659、issue #1653。
 - **验收**：仅在 Host 项目激活成功后，渲染层才恢复该规范化路径的本地归档元数据。
 - **状态**：`apps/desktop/test/app-store-sidebar.test.mjs` 与 `apps/desktop/test/project-create-dialog.test.mjs` 有源码契约覆盖；完整 UI 场景仍为草稿，仅在明确请求且环境可用时运行。
+
+
+#### E2E-CHAT-composer-native-collaboration
+
+- **前提：** 候选构建、隔离配置与工作区、两个启用子代理的模型；确定性测试使用本地 HTTP 模型夹具。
+- **步骤：** 从输入框底栏选择自动模式，指定执行模型、pro 审查模型、并发 8，保存后重新挂载。切换深度模式及并发 10，验证不能选择相同模型，保存失败后保留旧值，再关闭。普通编程请求依次实现、审查、修复失败项、重新审查；审查中停止；工作树准备期间同时申请九个任务。
+- **预期：** 模式与渠道保留、权限不变，保存失败不覆盖旧配置。子代理归属当前对话。审查读取最新文件，失败不能作为成功完成；停止会取消；并发上限 8 时最多启动八个任务。关闭模式及简单问答保留直接工作流程。
+- **规格：** [运行时](../03-runtime/02-agent-runtime.md)、[输入框配置](../04-ux/06-settings-ia.md)、[ADR](/adr/composer-native-collaboration)。
+- **验收：** 断言全部通过；真实渠道验证与确定性夹具结果分别记录。
+- **里程碑：** Fork 功能。
+- **状态：** 自动化见 `apps/desktop/test/collaboration-composer-user-path.test.mjs`、`packages/agent-runtime/src/collaboration-runtime.test.ts`、两个启动解析器测试及主机设置 RPC 往返测试。
+
+| 场景 | 运行时 | 界面 | 主机持久化 | 自动化 |
+| --- | --- | --- | --- | --- |
+| E2E-CHAT-composer-native-collaboration | 原生 Task 与审查门控 | 输入框选择器 | 可选协作设置 | 以上测试 |
+
+
+#### E2E-CHAT-collaboration-workflow
+
+- **Preconditions:** Candidate build and isolated profile with two enabled delegation models.
+- **Steps:** Select Standard development and split coding in the composer; save and reopen. Run an ordinary frontend/backend request. Observe GPT planning, primary frontend, collaboration-model backend and fresh review/test children. Exercise dependency-ordered assistance, failure/repair, a claimed test pass without Bash, overlapping writers, read-only analysis and Stop during planning.
+- **Expected:** Workflow and assignment persist with exact provider pins. All children belong to the original conversation. Coding obeys dependencies and file ownership; tests require successful observed command results. Failed or canceled workflows do not claim delivery or start later stages. No new sidebar sessions appear.
+- **Specs:** [Runtime](../03-runtime/02-agent-runtime.md), [composer settings](../04-ux/06-settings-ia.md), [ADR](/adr/composer-native-collaboration.md).
+- **Acceptance:** Deterministic tests pass. Real-provider evidence records actual model assignments, stage results, peak concurrency and sidebar count separately.
+- **Milestone:** Fork feature.
+- **Status:** Automated by `collaboration-workflow.test.ts`, `collaboration-runtime.test.ts`, `collaboration-composer-user-path.test.mjs`, shared/Rust settings validation; live provider acceptance is separate.

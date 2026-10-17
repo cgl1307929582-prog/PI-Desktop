@@ -128,12 +128,67 @@ it("runs Claude frontend and assistance, GPT backend, with dependencies and fres
 });
 
 it("requires observed successful commands and stops after two unsuccessful repair rounds", async () => {
-  const runner = new CollaborationWorkflowRunner(settings, async job =>
-    result(job.phase.includes("plan") || job.phase === "Plan" ? plan([task("web")]) : pass), () => {});
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase.includes("plan") || job.phase === "Plan") return result(plan([task("web")]));
+    return result(pass, job.phase === "Test" ? [{ ...testCommand, exitCode: 1 }] : []);
+  }, () => {});
   const output = await runner.run("Fix the UI.");
   expect(output.status).toBe("failed");
   expect(output.repairRounds).toBe(2);
   expect(output.stages.filter(stage => stage.phase === "Test")).toHaveLength(3);
+});
+
+it("blocks missing dependencies after the first checks without scheduling a code repair", async () => {
+  const commands = [
+    { command: "go build ./...", exitCode: 0, ok: true },
+    { command: "python -m pytest test_bridge.py", exitCode: 127, ok: false },
+    { command: "python3 -m unittest test_bridge.py", exitCode: 1, ok: false },
+  ];
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase === "Plan") return result(plan([task("api", "backend")]));
+    if (job.phase === "Test") return result(JSON.stringify({ verdict: "inconclusive",
+      summary: "Go build passed. Bridge tests could not import requests; prepare the documented Python environment and rerun unittest." }), commands);
+    return result(pass);
+  }, () => {});
+  const output = await runner.run("Fix the API and bridge.");
+  expect(output.status).toBe("failed");
+  expect(output.phase).toBe("Blocked");
+  expect(output.repairRounds).toBe(0);
+  expect(output.stages.map(stage => stage.phase)).toEqual(["Plan", "Coding · backend · api", "Review", "Test"]);
+  expect(output.stages.find(stage => stage.phase === "Review")?.status).toBe("completed");
+  expect(output.stages.find(stage => stage.phase === "Test")?.commands).toEqual(commands);
+  expect(output.error).toContain("No further code repair was scheduled");
+  expect(output.error).toContain("requests");
+});
+
+it("does not turn missing or malformed evidence into a source repair", async () => {
+  for (const response of [result(pass), result("not JSON"), result('{"verdict":"unknown","summary":"Done"}'),
+    result('{"verdict":"pass","summary":""}'), result('{"verdict":["pass"],"summary":"Done"}', [testCommand]),
+    result(pass, [{ ...testCommand, exitCode: null }]),
+    result(pass, [{ ...testCommand, exitCode: 126 }]), result(pass, [{ ...testCommand, exitCode: 127 }])]) {
+    const runner = new CollaborationWorkflowRunner(settings, async job => {
+      if (job.phase === "Plan") return result(plan([task("api", "backend")]));
+      return job.phase === "Test" ? response : result(pass);
+    }, () => {});
+    const output = await runner.run("Fix the API.");
+    expect(output.status).toBe("failed");
+    expect(output.repairRounds).toBe(0);
+    expect(output.stages.some(stage => stage.phase.startsWith("Repair") || stage.phase.startsWith("Fix"))).toBe(false);
+  }
+});
+
+it("keeps all findings but does not launch speculative repairs when another required check is blocked", async () => {
+  const runner = new CollaborationWorkflowRunner({ ...settings, workflow: "deep" }, async job => {
+    if (job.phase === "Plan") return result(plan([task("api", "backend")]));
+    if (job.phase === "Review") return result('{"verdict":"fail","summary":"api.txt:1 has an actionable bug."}');
+    if (job.phase === "Boundary tests") return result('{"verdict":"inconclusive","summary":"Required local service is unavailable."}', [testCommand]);
+    return result(pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  const output = await runner.run("Fix the API.");
+  expect(output.repairRounds).toBe(0);
+  expect(output.status).toBe("failed");
+  expect(output.error).toContain("actionable bug");
+  expect(output.error).toContain("Required local service");
 });
 
 it("failed tests trigger a fresh repair and both checks before completion", async () => {
@@ -157,7 +212,7 @@ it("does not accept a source-review verdict that only listed filenames", async (
   }, () => {});
   const output = await runner.run("Fix the API.");
   expect(output.status).toBe("failed");
-  expect(output.repairRounds).toBe(2);
+  expect(output.repairRounds).toBe(0);
   expect(output.stages.filter(stage => stage.phase === "Review").every(stage => stage.status === "failed")).toBe(true);
 });
 

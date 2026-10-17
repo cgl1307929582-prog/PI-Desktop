@@ -19,7 +19,8 @@ const read: Call[] = [{ name: "Read", arguments: { path: "app.txt" } }];
 const pass = '{"verdict":"pass","summary":"Read app.txt:1; it contains the requested fix."}';
 const fail = '{"verdict":"fail","summary":"app.txt:1 still contains the old behavior; repair it."}';
 
-async function fixture(replies: Record<string, Reply[]> | ((request: Request) => Reply), collaboration = settings, beforeReview?: () => Promise<void>, isolated = false) {
+async function fixture(replies: Record<string, Reply[]> | ((request: Request) => Reply), collaboration = settings, beforeReview?: () => Promise<void>, isolated = false,
+  bashResult = { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" }) {
   const workspace = await mkdtemp(join(tmpdir(), "pi-collaboration-"));
   await writeFile(join(workspace, "app.txt"), "old");
   const requests: Request[] = [];
@@ -61,7 +62,7 @@ async function fixture(replies: Record<string, Reply[]> | ((request: Request) =>
         executed.push(call.toolName);
         if (call.toolName === "Write") await writeFile(join(workspace, call.args.path), call.args.content ?? "");
         const content = call.toolName === "Read" ? await readFile(join(workspace, call.args.path), "utf8")
-          : call.toolName === "Bash" ? { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" } : "success";
+          : call.toolName === "Bash" ? bashResult : "success";
         return { ok: true, content } as T;
       }
       return {} as T;
@@ -241,6 +242,25 @@ it("workflow rejects a test pass claimed without any shell execution", async () 
   await f.runtime.prompt("Fix and test the project.");
   expect(f.executed).not.toContain("Bash");
   expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED")).toBe(true);
+}, 20_000);
+
+it("workflow preserves a missing-dependency blocker and command evidence without repeating native writers", async () => {
+  const f = await fixture(request => {
+    const context = JSON.stringify(request.messages);
+    if (context.includes("Your stage is automated test execution")) return context.includes('"role":"tool"')
+      ? '{"verdict":"inconclusive","summary":"Bridge tests did not run because requests is missing. Prepare the documented environment and rerun unittest."}'
+      : [{ name: "Bash", arguments: { command: "python3 -m unittest test_bridge.py" } }];
+    return workflowReply(request);
+  }, workflowSettings, undefined, false, { exitCode: 1, stdout: "", stderr: "ModuleNotFoundError: No module named 'requests'" });
+  await f.runtime.prompt("Fix and test the project.");
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
+  expect(f.requests.some(request => JSON.stringify(request.messages).includes("Repair only these failures"))).toBe(false);
+  const failure = f.events.find(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED");
+  expect(JSON.stringify(failure)).toContain("Verification is blocked");
+  expect(JSON.stringify(failure)).toContain("requests is missing");
+  expect(JSON.stringify(failure)).toContain("python3 -m unittest test_bridge.py");
+  expect(JSON.stringify(f.events)).toContain('"repairRounds":0');
+  expect(f.events.filter(event => event.agentName).every(event => event.sessionId === "collaboration-fixture" && !!event.parentToolCallId)).toBe(true);
 }, 20_000);
 
 it("workflow requires an observed source read even when a reviewer claims success after Glob", async () => {

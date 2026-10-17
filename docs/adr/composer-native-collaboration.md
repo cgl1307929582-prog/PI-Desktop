@@ -101,9 +101,17 @@ Each check returns structured evidence. Source review requires an observed succe
 Read of current files; listing filenames alone cannot pass. Its verdict covers source
 correctness, while the separate Test stage owns command execution.
 Test verification additionally requires observed Bash results with exit code zero.
-A claim without executed commands cannot pass. A failed check produces a fresh
-repair plan, followed by coding and both checks, at most twice. Missing evidence,
-provider failures and unresolved checks block successful delivery. Read-only
+A claim without executed commands cannot pass. Actionable source defects or
+executed failing tests produce a fresh repair plan, followed by coding and both
+checks, at most twice. An inconclusive report, malformed report, missing source
+reads, missing command evidence or unavailable executable blocks verification
+immediately without starting another code repair. If any required check is
+blocked, preserve all findings and command evidence, including failures from
+other checks; none are treated as a pass. Resolve the reported prerequisites
+before starting a fresh run. Verifiers read project instructions and reuse the
+documented test runner and existing project environment; they do not install
+dependencies or edit source/tests to bypass a blocker. Provider failures and
+unresolved checks still block successful delivery. Read-only
 requests and the review preset use only the read-only analyst. Direct parent
 Task calls cannot bypass a selected structured workflow. Stop aborts native
 children and prevents later stages. Repeated workflow calls within one turn

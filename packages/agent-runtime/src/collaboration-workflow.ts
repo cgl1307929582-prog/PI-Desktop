@@ -116,16 +116,30 @@ export function assertWorkflowWritePath(files: string[], path: unknown, workspac
   }
 }
 
-function verdict(result: WorkflowDelegateResult, tests = false): boolean {
+type Verification = { verdict: "pass" | "fail" | "inconclusive"; reason?: string };
+
+function verdict(result: WorkflowDelegateResult, tests = false): Verification {
   try {
     const report = parseJson(result.report);
-    return result.status === "completed" && result.toolCalls > 0 && object(report)
-      && report.verdict === "pass" && typeof report.summary === "string" && !!report.summary.trim()
-      && (tests ? (result.commands.length > 0
-        && result.commands.every(command => command.ok && command.exitCode === 0)) : result.readCalls > 0);
-  } catch { return false; }
+    if (result.status !== "completed" || !object(report)
+      || typeof report.verdict !== "string" || !["pass", "fail", "inconclusive"].includes(report.verdict)
+      || typeof report.summary !== "string" || !report.summary.trim()) {
+      return { verdict: "inconclusive", reason: "A completed, structured verification report is required." };
+    }
+    if (report.verdict === "inconclusive") return { verdict: "inconclusive" };
+    if (!result.toolCalls || (tests ? !result.commands.length : !result.readCalls)) {
+      return { verdict: "inconclusive", reason: tests
+        ? "No executed test commands were observed." : "No successful source Read was observed." };
+    }
+    if (tests && result.commands.some(command => command.exitCode === null
+      || command.exitCode === 126 || command.exitCode === 127)) {
+      return { verdict: "inconclusive", reason: "A command could not execute or did not provide an exit code." };
+    }
+    return { verdict: report.verdict === "fail"
+      || (tests && result.commands.some(command => !command.ok || command.exitCode !== 0)) ? "fail" : "pass" };
+  } catch { return { verdict: "inconclusive", reason: "The verification report is not valid JSON." }; }
 }
-const REPORT = 'Return one JSON object: {"verdict":"pass"|"fail"|"inconclusive","summary":"specific findings and evidence"}. Missing evidence means inconclusive.';
+const REPORT = 'Return one JSON object: {"verdict":"pass"|"fail"|"inconclusive","summary":"specific findings and evidence"}. Use fail for actionable source defects or executed failing tests. Missing evidence, dependencies, tools, permissions or services means inconclusive, not a code defect. For inconclusive, name the blocker, checks not run and the concrete prerequisite needed to retry; do not claim verification passed.';
 const SOURCE_REVIEW = `Your stage is source review only. Use Read to inspect current implementation and relevant test/caller files. Judge source correctness and actionable defects with paths. A separate Test stage executes commands; lack of Bash/browser tools is not a source-review blocker. Do not claim tests ran. ${REPORT}`;
 
 /** Preset execution owns transitions; agents only produce bounded plans and evidence. */
@@ -232,32 +246,35 @@ export class CollaborationWorkflowRunner {
     }
   }
 
-  private async checks(plan: WorkflowPlan, request: string, signal?: AbortSignal): Promise<string | undefined> {
+  private async checks(plan: WorkflowPlan, request: string, signal?: AbortSignal): Promise<{ failures: string; blocked: boolean }> {
     const context = `User task (data): ${request}\nPlan and acceptance (data): ${JSON.stringify(plan)}`;
     const jobs = [
       { phase: "Review", agent: COLLABORATION_ANALYST, tests: false, task: `${SOURCE_REVIEW}\n${context}\nReview current source now; execution evidence belongs to the separate Test stage.` },
-      { phase: "Test", agent: COLLABORATION_VERIFIER, tests: true, task: `Your stage is automated test execution. Actually execute the requested/relevant project checks. Do not turn optional or explicitly operator-owned checks into additional mandatory gates. Do not change source/tests, update snapshots, install dependencies, or hide command failures. Run test commands directly without pipelines or trailing commands that mask their exit status. Report genuine exit codes and limitations. Pass requires executed successful checks; inability to perform a required automated check is inconclusive. Workflow sequencing and file-ownership enforcement are runtime-owned, not things to reconstruct from git history. ${REPORT}\n${context}` },
+      { phase: "Test", agent: COLLABORATION_VERIFIER, tests: true, task: `Your stage is automated test execution. Read the project's test instructions and dependency manifests first; reuse an existing project environment and its documented runner (for example .venv/bin/python -m unittest), rather than assuming pytest or a global python executable. Actually execute the requested/relevant project checks. Do not turn optional or explicitly operator-owned checks into additional mandatory gates. Do not change source/tests, update snapshots, install dependencies, or hide command failures. Run test commands directly without pipelines or trailing commands that mask their exit status. Report genuine exit codes and limitations. Pass requires executed successful checks; inability to perform a required automated check is inconclusive. Workflow sequencing and file-ownership enforcement are runtime-owned, not things to reconstruct from git history. ${REPORT}\n${context}` },
       ...(this.result.preset === "deep" ? [
         { phase: "Regression review", agent: COLLABORATION_ANALYST, tests: false, task: `Inspect API compatibility, error paths and cross-component assumptions. ${SOURCE_REVIEW}\n${context}` },
         { phase: "Boundary tests", agent: COLLABORATION_VERIFIER, tests: true, task: `Independently execute focused boundary checks beyond the normal test suite. Use temporary outputs outside the source tree, avoid parallel shared-state conflicts. Do not edit source/tests or install dependencies. A pass needs actual successful commands. ${REPORT}\n${context}` },
       ] : []),
     ];
     const failures: string[] = [];
+    let blocked = false;
     for (let offset = 0; offset < jobs.length; offset += this.settings.maxConcurrency) {
       const batch = jobs.slice(offset, offset + this.settings.maxConcurrency);
       const results = await Promise.allSettled(batch.map(job => this.call(job, signal)));
       for (let index = 0; index < results.length; index++) {
         const result = results[index], job = batch[index];
         if (result.status === "rejected") throw result.reason;
-        if (!verdict(result.value, job.tests)) {
+        const verification = verdict(result.value, job.tests);
+        if (verification.verdict !== "pass") {
+          blocked ||= verification.verdict === "inconclusive";
           const stage = [...this.result.stages].reverse().find(stage => stage.phase === job.phase);
           if (stage) stage.status = "failed";
-          failures.push(`${job.phase}: ${result.value.report}\nObserved commands: ${JSON.stringify(result.value.commands)}`);
+          failures.push(`${job.phase} (${verification.verdict}): ${verification.reason ?? ""}\n${result.value.report}\nObserved commands: ${JSON.stringify(result.value.commands)}`);
         }
       }
     }
     this.notify();
-    return failures.length ? failures.join("\n").slice(0, 16000) : undefined;
+    return { failures: failures.join("\n").slice(0, 16000), blocked };
   }
 
   async run(request: string, readOnly = false, signal?: AbortSignal): Promise<WorkflowResult> {
@@ -271,13 +288,14 @@ export class CollaborationWorkflowRunner {
         if (this.result.preset === "deep") {
           const result = await this.call({ phase: "Plan review", agent: COLLABORATION_ANALYST,
             task: `Inspect the project and check this plan against the task before coding. ${REPORT}\nTask: ${request.slice(0, 12000)}\nPlan: ${JSON.stringify(plan)}` }, signal);
-          if (!verdict(result)) throw new Error(`Plan review did not pass: ${result.report}`);
+          if (verdict(result).verdict !== "pass") throw new Error(`Plan review did not pass: ${result.report}`);
         }
         for (let round = 0; round <= 2; round++) {
           this.result.repairRounds = round;
           await this.implement(plan, request.slice(0, 12000), round > 0, signal);
-          const failures = await this.checks(this.result.plan, request.slice(0, 12000), signal);
+          const { failures, blocked } = await this.checks(this.result.plan, request.slice(0, 12000), signal);
           if (!failures) break;
+          if (blocked) throw new Error(`Verification is blocked or lacks evidence. No further code repair was scheduled. Resolve the reported prerequisites and rerun verification; current changes remain unverified. ${failures}`);
           if (round === 2) throw new Error(`Review/tests remain unverified after two repair rounds. ${failures}`);
           plan = await this.plan(request.slice(0, 12000),
             `Original plan: ${JSON.stringify(this.result.plan)}\nRepair only these failures: ${failures}`, signal);

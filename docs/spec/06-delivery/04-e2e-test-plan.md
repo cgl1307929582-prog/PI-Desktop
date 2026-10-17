@@ -18182,6 +18182,13 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Preconditions:** Candidate build and isolated profile with two enabled delegation models.
 - **Steps:** Select Standard development and split coding in the composer; save and reopen. Run an ordinary frontend/backend request. Observe GPT planning, primary frontend, collaboration-model backend and fresh review/test children. Exercise dependency-ordered assistance, failure/repair, a claimed test pass without Bash, overlapping writers, read-only analysis and Stop during planning. Return a planner task with an empty file list; verify a field-specific correction reaches coding and fresh checks, and that repeated invalid output stops after two corrections without writes. Stop during correction and reject provider failures without format retries.
 - **Expected:** Workflow and assignment persist with exact provider pins. All children belong to the original conversation. Coding obeys dependencies and file ownership; tests require successful observed command results. Failed or canceled workflows do not claim delivery or start later stages. No new sidebar sessions appear.
+- **Verification blocker regression:** Return an inconclusive Test result after
+  successful Go commands and a Python import failure for a missing dependency.
+  Expect a blocked workflow with the observed commands and prerequisite retained,
+  zero repair rounds, and no additional planner/writer. Cover malformed verdicts,
+  missing Read/Bash evidence, unavailable executables and mixed failed/blocked
+  checks. Executed test failures must still get bounded repairs and fresh checks;
+  resolving the environment and rerunning must allow ordinary completion.
 - **Specs:** [Runtime](../03-runtime/02-agent-runtime.md), [composer settings](../04-ux/06-settings-ia.md), [ADR](../../adr/composer-native-collaboration.md).
 - **Acceptance:** Deterministic tests pass. Real-provider evidence records actual model assignments, stage results, peak concurrency and sidebar count separately.
 - **Milestone:** Fork feature.

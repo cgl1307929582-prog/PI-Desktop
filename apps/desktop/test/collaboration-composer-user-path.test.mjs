@@ -23,21 +23,29 @@ import "../../apps/desktop/src/styles/ui-kit.css";
 import "../../apps/desktop/src/styles/settings.css";
 import "../../apps/desktop/src/styles/composer-collaboration.css";
 
-let persisted = { defaultMode: "agent", defaultPermissionMode: "auto", theme: "dark", language: "en", developerMode: false };
+const globalSettings = { defaultMode: "agent", defaultPermissionMode: "auto", theme: "dark", language: "en", developerMode: false };
+const globalBefore = JSON.stringify(globalSettings);
+const choices = {};
+const defaultChoice = () => ({ mode: "off", workflow: "auto", codingMode: "auto", executionModel: "", reviewModel: "", maxConcurrency: 8 });
 let failSave = false;
+let failLoad = false;
 const writes = [];
 window.piDesktop = { platform: "darwin", on() { return () => {}; }, async invoke(channel, value) {
-  if (channel !== "pi-desktop/settings/set") throw new Error("Unexpected IPC " + channel);
+  if (channel === "pi-desktop/session/workflow/get") {
+    if (failLoad) return { ok: false, error: { code: "INTERNAL_ERROR", message: "Fixture load failed" } };
+    return { ok: true, data: { settings: structuredClone(choices[value.sessionId] ??= defaultChoice()) } };
+  }
+  if (channel !== "pi-desktop/session/workflow/set") throw new Error("Unexpected IPC " + channel);
   if (failSave) return { ok: false, error: { code: "INTERNAL_ERROR", message: "Fixture save failed" } };
-  persisted = structuredClone(value);
-  writes.push(persisted);
-  return { ok: true };
+  choices[value.sessionId] = structuredClone(value.settings);
+  writes.push(structuredClone(value));
+  return { ok: true, data: { settings: structuredClone(value.settings) } };
 } };
 await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", keySeparator: false,
   resources: { en: { translation: flattenCatalog(catalogs.en) } }, interpolation: { escapeValue: false } });
 const model = (id, availableForSubagents = true) => ({ id, availableForSubagents });
 const provider = (id, name, models, enabled = true) => ({ id, name, models, enabled });
-useAppStore.setState({ settings: persisted, providers: [
+useAppStore.setState({ settings: globalSettings, providers: [
   provider("claude", "Claude channel", [model("claude-opus")]),
   provider("pro", "pro", [model("gpt")]),
   provider("other", "Other GPT", [model("gpt"), model("not-opted-in", false)]),
@@ -46,10 +54,12 @@ useAppStore.setState({ settings: persisted, providers: [
 function Harness() {
   const [round, remount] = React.useState(0);
   const [disabled, setDisabled] = React.useState(false);
+  const [sessionId, setSession] = React.useState("first");
+  window.setSession = setSession;
   window.remount = () => remount(value => value + 1);
   window.setDisabled = setDisabled;
   return <div style={{ position: "fixed", bottom: 24, left: 24 }}>
-    <ComposerCollaborationPicker key={round} disabled={disabled} onOpen={() => {}} />
+    <ComposerCollaborationPicker key={round + (sessionId ?? "draft")} sessionId={sessionId} disabled={disabled} onOpen={() => {}} />
   </div>;
 }
 const root = createRoot(document.getElementById("root"));
@@ -64,7 +74,7 @@ const button = text => [...document.querySelectorAll("button")].find(el => el.te
 const label = text => [...document.querySelectorAll("button")].find(el => el.getAttribute("aria-label") === text);
 async function click(el) {
   if (!el) throw new Error("Missing button. Current UI: " + document.body.innerText);
-  if (el.disabled) throw new Error("Button disabled: " + el.textContent);
+  if (el.disabled) throw new Error("Button disabled: " + el.textContent + " UI=" + document.body.innerText + " WRITES=" + JSON.stringify(writes));
   el.scrollIntoView({ block: "nearest" });
   await settle();
   flushSync(() => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); el.click(); });
@@ -77,12 +87,12 @@ async function choose(field, option) {
 }
 const trigger = () => [...document.querySelectorAll("button")].find(el => el.getAttribute("aria-label")?.startsWith("Collaboration:"));
 window.collaborationProbe = async () => {
-  await settle();
+  await waitFor(() => !trigger().disabled, "Initial preference did not load");
   if (trigger().textContent.trim() !== "Collaboration: Off") throw new Error("Default mode is not off");
   await click(trigger());
   await click(button("Smart"));
   const smartHint = document.body.innerText.includes("only when the model chooses collaboration");
-  if (!button("Save collaboration settings").disabled) throw new Error("Missing models should block save");
+  if (!button("Save for this conversation").disabled) throw new Error("Missing models should block save");
   await click(label("Primary developer model"));
   const listed = document.body.innerText;
   if (listed.includes("not-opted-in") || listed.includes("Disabled channel")) throw new Error("Unavailable models are selectable");
@@ -91,10 +101,10 @@ window.collaborationProbe = async () => {
   await choose("Workflow", "Standard development");
   await choose("Coding assignment", "Primary frontend · collaboration backend");
   await choose("Maximum concurrent subagents", "8");
-  await click(button("Save collaboration settings"));
-  await waitFor(() => trigger().textContent.trim() === "Collaboration: Smart", "Saved smart mode not visible");
+  await click(button("Save for this conversation"));
+  await waitFor(() => trigger().textContent.includes("Standard development (locked)"), "Saved smart mode not visible");
   flushSync(() => window.remount());
-  await settle();
+  await waitFor(() => !trigger().disabled, "Remounted preference did not load");
   await click(trigger());
   const pinsRestored = label("Primary developer model").textContent.includes("claude-opus")
     && label("Collaboration model").textContent.includes("gpt · pro");
@@ -105,33 +115,72 @@ window.collaborationProbe = async () => {
   const readOnlyAssignmentDisabled = label("Coding assignment").disabled;
   await choose("Workflow", "Deep development");
   await choose("Maximum concurrent subagents", "10");
-  await click(button("Save collaboration settings"));
+  await click(button("Save for this conversation"));
   await click(trigger());
   await choose("Collaboration model", "claude-opus · Claude channel");
-  const sameModelBlocked = button("Save collaboration settings").disabled;
+  const sameModelBlocked = button("Save for this conversation").disabled;
   // Escape discards the invalid draft.
   flushSync(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await settle();
   await click(trigger());
   await click(button("Off"));
   failSave = true;
-  await click(button("Save collaboration settings"));
-  const failurePreserved = useAppStore.getState().settings.collaboration.mode === "deep"
+  await click(button("Save for this conversation"));
+  const failurePreserved = choices.first.mode === "deep"
     && document.querySelector('[role="dialog"]') !== null;
   failSave = false;
-  await click(button("Save collaboration settings"));
+  await click(button("Save for this conversation"));
+  flushSync(() => window.setSession("second"));
+  await waitFor(() => !trigger().disabled, "Second session did not load");
+  const secondIndependent = trigger().textContent.trim() === "Collaboration: Off";
+  await click(trigger());
+  await click(button("Smart"));
+  await choose("Primary developer model", "claude-opus · Claude channel");
+  await choose("Collaboration model", "gpt · pro");
+  await choose("Workflow", "Automatic");
+  await choose("Coding assignment", "Assign by task");
+  await click(button("Save for this conversation"));
+  const automaticSaved = choices.second.workflow === "auto" && choices.second.codingMode === "auto";
+  flushSync(() => window.setSession("first"));
+  await waitFor(() => !trigger().disabled, "First session did not reload");
+  await click(trigger());
+  const firstLockRetained = label("Workflow").textContent.includes("Deep development");
+  flushSync(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  choices.retry = { ...choices.second, workflow: "standard" };
+  failLoad = true;
+  flushSync(() => window.setSession("retry"));
+  await waitFor(() => !trigger().disabled, "Failed load did not become retryable");
+  await click(trigger());
+  if (!button("Save for this conversation").disabled) throw new Error("Failed load allowed save");
+  failLoad = false;
+  await click(button("Retry loading"));
+  await waitFor(() => label("Workflow").textContent.includes("Standard development"), "Retry did not restore the saved manual lock");
+  const retryRestored = !button("Save for this conversation").disabled;
+  flushSync(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  flushSync(() => window.setSession(undefined));
+  await settle();
+  await click(trigger());
+  await click(button("Smart"));
+  await choose("Primary developer model", "claude-opus · Claude channel");
+  await choose("Collaboration model", "gpt · pro");
+  await choose("Workflow", "Quick fix");
+  await click(button("Save for this conversation"));
+  const draftRetained = useAppStore.getState().draftConfiguration.collaboration.workflow === "quick" && writes.length === 4
+    && useAppStore.getState().draftConfiguration.thinkingLevel === undefined;
   flushSync(() => window.setDisabled(true));
   await settle();
   const disabledWhileRunning = trigger().disabled;
   return { smartHint, pinsRestored, workflowRestored, readOnlyAssignmentDisabled, sameModelBlocked, failurePreserved, disabledWhileRunning,
-    modes: writes.map(value => value.collaboration.mode),
-    proPin: writes[0].collaboration.reviewModel,
-    concurrency: writes[1].collaboration.maxConcurrency,
-    permissionsUnchanged: writes.every(value => value.defaultPermissionMode === "auto") };
+    secondIndependent, automaticSaved, firstLockRetained, draftRetained, retryRestored,
+    modes: writes.map(value => value.settings.mode),
+    proPin: writes[0].settings.reviewModel,
+    concurrency: writes[1].settings.maxConcurrency,
+    permissionsUnchanged: JSON.stringify(useAppStore.getState().settings) === globalBefore };
+
 };
 `;
 
-test("composer collaboration saves pinned channels and modes without changing permissions", {
+test("composer saves independent session locks and automatic choices without changing global settings", {
   timeout: 60_000,
   skip:
     process.platform === "linux" && !process.env.DISPLAY
@@ -214,7 +263,8 @@ app.whenReady().then(async () => {
     assert.deepEqual(result, {
       smartHint: true, pinsRestored: true, workflowRestored: true, readOnlyAssignmentDisabled: true,
       sameModelBlocked: true, failurePreserved: true, disabledWhileRunning: true,
-      modes: ["auto", "deep", "off"], proPin: "pro/gpt", concurrency: 10, permissionsUnchanged: true,
+      secondIndependent: true, automaticSaved: true, firstLockRetained: true, draftRetained: true, retryRestored: true,
+      modes: ["auto", "deep", "off", "auto"], proPin: "pro/gpt", concurrency: 10, permissionsUnchanged: true,
     });
   } finally {
     await rm(temp, { recursive: true, force: true });

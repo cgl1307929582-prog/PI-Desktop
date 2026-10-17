@@ -183,7 +183,7 @@ export function ComposerToolbar({
                   });
                 }
           }} />
-        {localToolsAllowed ? <ComposerCollaborationPicker
+        {localToolsAllowed ? <ComposerCollaborationPicker key={workSessionId ?? "draft"} sessionId={workSessionId}
           disabled={controlsBlocked || runActive || mode !== "agent"}
           onOpen={() => { modelMenu.setOpen(false); setPermissionOpen(false); }}
         /> : null}

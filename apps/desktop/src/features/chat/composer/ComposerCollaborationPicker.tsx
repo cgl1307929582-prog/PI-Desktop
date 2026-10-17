@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   COLLABORATION_MODES, COLLABORATION_WORKFLOWS, COLLABORATION_CODING_MODES,
-  collaborationSettings, isCollaborationSettings,
+  isCollaborationSettings,
   type CollaborationSettings,
 } from "@pi-desktop/shared";
-import { api } from "../../../lib/api";
+import { useSessionWorkflow } from "./hooks/useSessionWorkflow";
 import { useAppStore } from "../../../stores/app-store";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
@@ -13,7 +13,8 @@ import { Button, Field, SegmentedControl, TooltipButton } from "../../../compone
 import { IconChevronDown } from "../../../components/icons";
 
 /** The composer is the entry point; saving a mode never changes permissions. */
-export function ComposerCollaborationPicker({ disabled, onOpen }: {
+export function ComposerCollaborationPicker({ disabled, onOpen, sessionId }: {
+  sessionId?: string;
   disabled: boolean;
   onOpen: () => void;
 }) {
@@ -21,10 +22,14 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
   const settings = useAppStore((state) => state.settings);
   const providers = useAppStore((state) => state.providers);
   const showToast = useAppStore((state) => state.showToast);
-  const saved = collaborationSettings(settings?.collaboration);
-  const displayMode = t(`collaboration.${saved.mode}`) + (saved.mode === "deep" && saved.workflow && saved.workflow !== "adaptive"
-    ? ` · ${t(`collaboration.workflows.${saved.workflow}`)}` : "");
+  const preference = useSessionWorkflow(sessionId);
+  const saved = preference.saved;
+  const workflowLabel = t(`collaboration.workflows.${saved.workflow ?? "adaptive"}`);
+  const displayMode = t(`collaboration.${saved.mode}`) + (saved.mode === "off" ? ""
+    : ` · ${saved.workflow === "auto" ? workflowLabel : t("collaboration.lockedWorkflow", { workflow: workflowLabel })}`);
   const [draft, setDraft] = useState<CollaborationSettings>(saved);
+  // A successful retry must display the recovered choice before it can be saved.
+  useEffect(() => setDraft({ ...saved }), [saved]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const models = useMemo(() => providers.filter((provider) => provider.enabled).flatMap((provider) =>
@@ -38,16 +43,13 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
     : options;
   const configured = available.has(draft.executionModel) && available.has(draft.reviewModel)
     && draft.executionModel !== draft.reviewModel;
-  const canSave = !!settings && isCollaborationSettings(draft) && (draft.mode === "off" || configured);
+  const canSave = !!settings && !preference.loading && !preference.error && isCollaborationSettings(draft) && (draft.mode === "off" || configured);
 
   const save = async () => {
-    const current = useAppStore.getState().settings;
-    if (!current || !canSave || busy) return;
+    if (!canSave || busy) return;
     setBusy(true);
     try {
-      const next = { ...current, collaboration: { ...draft } };
-      await api.setSettings(next);
-      useAppStore.setState({ settings: next });
+      await preference.save({ ...draft });
       setOpen(false);
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
@@ -67,8 +69,8 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
       tooltip={t("collaboration.title")}
       ariaLabel={t("collaboration.trigger", { mode: displayMode })}
       aria-haspopup="dialog" aria-expanded={open && !disabled}
-      disabled={disabled || !settings}
-      onClick={() => { onOpen(); setDraft(collaborationSettings(settings?.collaboration)); setOpen((value) => !value); }}
+      disabled={disabled || !settings || preference.loading}
+      onClick={() => { onOpen(); setDraft({ ...saved }); setOpen((value) => !value); }}
     >
       <span className="text-sm">{t("collaboration.trigger", { mode: displayMode })}</span>
       <IconChevronDown size={12} />
@@ -79,6 +81,8 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
     <div className="composer-collaboration-content" role="presentation"
       onMouseDown={(event) => event.stopPropagation()}>
       <strong>{t("collaboration.title")}</strong>
+      {preference.error ? <div role="alert"><p>{preference.error}</p>
+        <Button size="sm" onClick={preference.retry}>{t("collaboration.retry")}</Button></div> : null}
       <SegmentedControl value={draft.mode} label={t("collaboration.mode")}
         options={COLLABORATION_MODES.map((mode) => ({ value: mode, label: t(`collaboration.${mode}`) }))}
         disabled={busy}
@@ -90,6 +94,7 @@ export function ComposerCollaborationPicker({ disabled, onOpen }: {
           label={t("collaboration.workflow")} disabled={busy} fullWidth
           onChange={(workflow) => setDraft(value => ({ ...value, workflow: workflow as CollaborationSettings["workflow"] }))} />
       </Field>
+      <p className="text-xs text-muted">{t(draft.workflow === "auto" ? "collaboration.automaticWorkflowHint" : "collaboration.lockedWorkflowHint")}</p>
       {draft.mode === "auto" ? <p className="text-xs text-muted">{t("collaboration.smartWorkflowHint")}</p> : null}
       <Field label={t("collaboration.codingMode")}>
         <SettingsMenuSelect value={draft.codingMode ?? "primary"}

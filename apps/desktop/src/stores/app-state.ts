@@ -106,8 +106,9 @@ export type RefreshSessionsOptions = {
 
 /** Toolbar selections retained on the unpersisted new-task draft. */
 export type DraftSessionConfiguration = {
+  collaboration?: import("@pi-desktop/shared").CollaborationSettings;
   mode: Mode;
-  thinkingLevel: SessionThinkingLevel;
+  thinkingLevel?: SessionThinkingLevel;
   providerId?: string;
   modelId?: string;
   permissionMode?: PermissionMode;

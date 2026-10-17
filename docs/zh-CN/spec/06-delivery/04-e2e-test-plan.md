@@ -9773,3 +9773,10 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Acceptance:** Deterministic tests pass. Real-provider evidence records actual model assignments, stage results, peak concurrency and sidebar count separately.
 - **Milestone:** Fork feature.
 - **Status:** Automated by `collaboration-workflow.test.ts`, `collaboration-runtime.test.ts`, `collaboration-composer-user-path.test.mjs`, shared/Rust settings validation; live provider acceptance is separate.
+
+
+#### E2E-CHAT-session-workflow-routing
+
+- **步骤：** 一个会话保存自动流程与分工，另一个锁定深度开发；切换、重启、分支和删除后各自正确保存，原全局配置与对话内容保留。运行中、待审批及计划执行排队或运行时拒绝更改。仅保存草稿不创建会话、不改变思考等级。加载失败可重试，切换后迟到的响应不能污染当前会话。
+- **运行时：** 连续不同轮自动选快速、标准和只读审查并记录原因，下一轮可恢复独立处理；缺少自动选择信息或试图覆盖手动锁定时不启动子代理。两种开发模型均可分配前后端任务，仍保留独立审查/测试与文件依赖限制。插件单次补全及语音分类跳过会话工作流读取。
+- **覆盖：** `scripts/e2e-session-workflow.mjs` 检查真实主机与重启；输入框、启动器、路由及运行时测试覆盖边界。实际 Claude/pro GPT 的分工、执行命令与侧栏会话数单独记录，模拟响应不算渠道实测。

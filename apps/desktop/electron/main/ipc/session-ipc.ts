@@ -351,6 +351,16 @@ export function registerSessionIpc({
         : result;
     },
   );
+  for (const [channel, method] of [
+    [IPC.invoke.sessionWorkflowGet, "session.workflow.get"],
+    [IPC.invoke.sessionWorkflowSet, "session.workflow.set"],
+  ] as const) {
+    handle(channel, async (input: { sessionId?: unknown; settings?: unknown } = {}) => {
+      if (!host) throw new Error("host unavailable");
+      rejectNativeMutation(input.sessionId, "workflow settings");
+      return host.call(method, input);
+    });
+  }
   handle(IPC.invoke.sessionCollaboration, async (input?: { sessionId?: unknown }) => {
     if (!host) throw new Error("host unavailable");
     const sessionId = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";

@@ -54,6 +54,7 @@ test("an isolated session launches in its worktree with its project's configurat
           const shell = { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true };
           return { configuredId: "bash", effective: shell, fallback: false, choices: [shell] };
         }
+        if (method === "session.workflow.get") return { settings: undefined };
         if (method === "providers.list") return { providers: [provider] };
         if (method === "providers.getSecret") return { value: "" };
         if (method === "skills.disabledBuiltins") return { disabled: [] };

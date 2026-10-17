@@ -334,3 +334,60 @@ it("Stop during workflow planning prevents coding and parent continuation", asyn
   expect(f.executed).not.toContain("Write");
   expect(f.requests.filter(request => request.model === "parent")).toHaveLength(1);
 }, 15_000);
+
+it("automatic workflows change per turn in one conversation while preserving model pins and solo follow-up", async () => {
+  const choice = (preset: string): Call[] => [{ name: "CollaborationWorkflow", arguments: {
+    task: "Implement the scoped frontend and backend request, or review without changes.", preset,
+    reason: `This turn needs ${preset} because of its requested scope.`,
+  } }];
+  const replies: Reply[] = [choice("quick"), "Done.", choice("standard"), "Done.", choice("review"), "Reviewed.", write("follow-up"), "Done."];
+  const automaticPlan = JSON.parse(workflowPlan);
+  automaticPlan.tasks[0].role = "primary";
+  automaticPlan.tasks[1].role = "collaboration";
+  const f = await fixture(request => {
+    if (request.model === "parent") return replies.shift() ?? "Done.";
+    const context = JSON.stringify(request.messages);
+    if (context.includes("Produce an implementation plan") && context.includes('"role":"tool"')) return JSON.stringify(automaticPlan);
+    return workflowReply(request);
+  }, { ...workflowSettings, workflow: "auto", codingMode: "auto" });
+  await f.runtime.prompt("Repair the two scoped defects.");
+  await f.runtime.prompt("Implement the next frontend and backend feature.");
+  const writes = f.executed.filter(name => name === "Write").length;
+  expect(writes).toBe(4);
+  await f.runtime.prompt("Independently review current code without changes.");
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(writes);
+  const previous = f.requests.length;
+  await f.runtime.prompt("Make a small follow-up directly.");
+  expect(f.requests.slice(previous).every(request => request.model === "parent")).toBe(true);
+  expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("follow-up");
+  const evidence = JSON.stringify(f.events);
+  for (const preset of ["quick", "standard", "review"]) {
+    expect(evidence).toContain(`This turn needs ${preset}`);
+    expect(evidence).toContain(`"preset":"${preset}"`);
+  }
+  expect(evidence).toContain("collaboration-backend");
+  expect(evidence).toContain("collaboration-executor");
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+}, 30_000);
+
+it("rejects a missing automatic routing reason without starting children or locking direct work", async () => {
+  const f = await fixture({ parent: [[{ name: "CollaborationWorkflow", arguments: { task: "Fix app.txt", preset: "quick" } }], write(), "Done."] },
+    { ...workflowSettings, workflow: "auto" });
+  await f.runtime.prompt("Fix a small typo.");
+  expect(f.requests.every(request => request.model === "parent")).toBe(true);
+  expect(f.executed).toEqual(["Write"]);
+  expect(JSON.stringify(f.events)).toContain("concrete reason");
+});
+
+it("a manually locked workflow refuses a model override before running the selected recipe", async () => {
+  const replies: Reply[] = [
+    [{ name: "CollaborationWorkflow", arguments: { task: "Fix both files", preset: "deep", reason: "Prefer more checks" } }],
+    [{ name: "CollaborationWorkflow", arguments: { task: "Fix both files" } }], "Done.",
+  ];
+  const f = await fixture(request => request.model === "parent" ? replies.shift() ?? "Done." : workflowReply(request), workflowSettings);
+  await f.runtime.prompt("Implement this feature.");
+  expect(JSON.stringify(f.events)).toContain("locked to standard");
+  expect(f.requests.some(request => JSON.stringify(request.messages).includes("check this plan against the task"))).toBe(false);
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+}, 20_000);

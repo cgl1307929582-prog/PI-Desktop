@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Selecciona automáticamente el flujo y los modelos de desarrollo por tarea, con preferencias y bloqueo manual por conversación.",
       "El modelo principal decide cuándo colaborar: el modo inteligente resuelve cambios pequeños directamente y usa subagentes solo cuando aportan valor.",
       "Flujos de desarrollo guardados con planificación, modelos para frontend y backend, revisión independiente, pruebas y correcciones limitadas.",
       "Activa la colaboración automática entre modelos desde el editor, con proveedores fijos para ejecución y revisión y subagentes en la misma conversación.",

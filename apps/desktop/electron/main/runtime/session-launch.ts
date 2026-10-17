@@ -303,6 +303,8 @@ export function createSessionLaunchRuntime({
     overrides: {
       mode?: Mode;
       turnId?: string;
+      /** One-shot provider requests have no durable conversation preferences. */
+      providerOnly?: boolean;
       providerId?: string;
       modelId?: string;
       thinkingLevel?: SessionThinkingLevel;
@@ -545,7 +547,9 @@ export function createSessionLaunchRuntime({
     const mode = normalizeMode(
       overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
     );
-    const collaboration = collaborationSettings(settings.collaboration);
+    const collaboration = collaborationSettings(overrides.providerOnly ? undefined : mode === "agent" && !sessionId.startsWith("native-pi:")
+      ? (await runtimeState.host!.call<{ settings: unknown }>("session.workflow.get", { sessionId })).settings
+      : settings.collaboration);
     const collaborationRoles = mode === "agent" ? collaborationDefinitions(collaboration) : [];
     if (collaborationRoles.length) {
       const unavailable = unavailableCollaborationModels(collaboration, providers.providers);

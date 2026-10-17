@@ -51,6 +51,7 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
           };
           return { configuredId: "bash", effective: shell, fallback: false, choices: [shell] };
         }
+        if (method === "session.workflow.get") return { settings: undefined };
         if (method === "providers.list") return { providers: [provider] };
         if (method === "providers.getSecret") return { value: "" };
         if (method === "skills.disabledBuiltins") return { disabled: [] };

@@ -6,6 +6,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   contextCompactionMark,
+  newSessionCollaboration,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
   normalizeMode,
@@ -319,6 +320,7 @@ export function createSessionCoordination({
         mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
         thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
         permissionMode: draftConfig?.permissionMode,
+        collaboration: draftConfig?.collaboration ?? newSessionCollaboration(settings?.collaboration),
         providerId: inherited.providerId,
         modelId: inherited.modelId,
         projectPath: projectPath ?? undefined,

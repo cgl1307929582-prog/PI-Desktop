@@ -31,6 +31,7 @@ import type {
   PendingInteractiveRequests,
   AgentInstructionFile,
   AppSettings,
+  CollaborationSettings,
   JevKeyCheckResult,
   CommandShellCatalog,
   AppVersionInfo,
@@ -384,6 +385,7 @@ export type BackgroundTaskOutput = {
 
 /** `session.create` input: summary fields plus the isolation switch. */
 export type CreateSessionInput = Partial<SessionSummary> & {
+  collaboration?: CollaborationSettings;
   /** Run the session in its own git worktree (ADR 0329). */
   isolated?: boolean;
 };
@@ -723,6 +725,10 @@ export const api = {
     })),
   getSessionCollaboration: (sessionId: string) =>
     invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
+  getSessionWorkflow: (sessionId: string) =>
+    invoke<{ settings: CollaborationSettings }>(IPC.invoke.sessionWorkflowGet, { sessionId }),
+  setSessionWorkflow: (sessionId: string, settings: CollaborationSettings) =>
+    invoke<{ settings: CollaborationSettings }>(IPC.invoke.sessionWorkflowSet, { sessionId, settings }),
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),

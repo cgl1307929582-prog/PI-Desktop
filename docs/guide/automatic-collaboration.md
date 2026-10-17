@@ -8,8 +8,8 @@ description: Choose execution and review models from the composer in this fork.
 In Agent mode, select **Collaboration: Off** beside the permission control at
 the bottom of the composer. Choose **Smart** or **Always**, select a primary developer
 model and a collaboration model, choose a maximum concurrency, then save.
-The selection applies to new Agent turns on this installation and survives
-restart. You do not need to type a trigger phrase. To return to the usual
+The selection applies to the next Agent turn in this conversation and survives
+restart. Other conversations keep their own choices. You do not need to type a trigger phrase. To return to the usual
 workflow, select Off and save.
 
 For Claude implementation and pro GPT review, choose the Claude model from its
@@ -48,14 +48,33 @@ Auto/Deep settings map to Smart/Always without changing their model pins.
 
 ## Workflow presets and coding assignment
 
-The same composer menu stores optional `workflow` and `codingMode` fields.
-Missing fields retain flexible collaboration and primary-model implementation.
-Presets are Flexible, Quick fix, Standard development, Deep development and
-Read-only review. Coding can use the primary model alone, or assign frontend
-and scoped assistance to the primary model and backend implementation to the
-collaboration model. Planning, independent source reviews and test execution
-always use fresh collaboration-model contexts. Both models can therefore write
-code without allowing the implementation context to approve its own work.
+The composer stores workflow and coding choices separately for each conversation.
+**Automatic** lets the current model choose Quick fix, Standard development,
+Deep development or Read-only review for this turn, with a short reason recorded
+in the workflow result. No extra router agent is started. Selecting a named
+preset manually locks it until you choose Automatic again; Flexible remains a
+manual option. A turn's automatic decision never overwrites the saved choice.
+Smart still decides whether collaboration is useful before selecting its workflow.
+
+**Automatic assignment** lets the planner assign each exact-file task to the
+primary or collaboration developer. Claude can handle frontend or backend work;
+pro GPT can also write either. Assignments depend on the task and dependencies,
+not a fixed quota of agents. Primary-only and frontend/backend split remain
+available. Planning, independent source reviews and test execution always use
+fresh collaboration-model contexts, including when that model also writes code.
+The implementation context cannot approve its own work.
+
+Preferences use host-owned KV namespace `session-workflow-v1`, through
+`session.workflow.get/set`; no transcript or schema rewrite is needed. The first
+read snapshots legacy global preferences without changing them, preserving
+explicit read-only and primary-only choices. New Desktop drafts default to
+Automatic workflow/assignment except those preserved restrictions. Drafts do not
+create conversations until sent. Forks copy preferences; deletion cleans only
+that conversation's record. Saves affect its next turn, survive restart, and
+are refused during running turns, pending plan approval or queued/running plan
+execution. The composer handles loading, retry and late responses after a switch.
+Provider-only plugin completions and voice classification do not load session
+workflow settings or start collaboration.
 
 Structured presets expose `CollaborationWorkflow`. For development the runtime
 executes Plan → dependency-ordered Coding → Review + Test → bounded Fix → fresh

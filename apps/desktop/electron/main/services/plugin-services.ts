@@ -396,6 +396,7 @@ export function createPluginServices({
         ? (await getHost()!.call<{ session?: any }>("session.get", { id: input.sessionId })).session
         : {};
       const launch = await resolveAgentRuntimeLaunch(launchSessionId, session ?? {}, settings, {
+        providerOnly: true,
         mode: "agent",
         providerId: parsed.providerId,
         modelId: parsed.modelId,

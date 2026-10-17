@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "İş akışını ve geliştirme modellerini göreve göre otomatik seçin; her konuşma için ayrı tercihleri kaydedin veya elle sabitleyin.",
       "Ana model ne zaman iş birliği yapacağına karar verir: akıllı mod küçük değişiklikleri doğrudan yapar ve alt ajanları yalnızca gerektiğinde başlatır.",
       "Planlama, ön ve arka uç model dağılımı, bağımsız inceleme, gerçek testler ve sınırlı düzeltme içeren geliştirme iş akışları.",
       "Yazma alanından otomatik çoklu model iş birliğini açın; yürütme ve inceleme sağlayıcılarını sabitleyin, alt ajanları aynı konuşmada izleyin.",

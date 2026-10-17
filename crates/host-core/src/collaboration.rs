@@ -24,14 +24,14 @@ pub fn validate_settings(settings: &Value) -> Result<(), &'static str> {
                     preset.as_str().is_some_and(|preset| {
                         matches!(
                             preset,
-                            "adaptive" | "quick" | "standard" | "deep" | "review"
+                            "auto" | "adaptive" | "quick" | "standard" | "deep" | "review"
                         )
                     })
                 })
                 && value.get("codingMode").is_none_or(|assignment| {
-                    assignment
-                        .as_str()
-                        .is_some_and(|assignment| matches!(assignment, "primary" | "split"))
+                    assignment.as_str().is_some_and(|assignment| {
+                        matches!(assignment, "auto" | "primary" | "split")
+                    })
                 })
                 && model_key(execution)
                 && model_key(review)

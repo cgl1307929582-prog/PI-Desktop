@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collaborationDefinitions, collaborationPrompt, collaborationSettings, isCollaborationSettings } from "./collaboration.js";
+import { newSessionCollaboration, collaborationDefinitions, collaborationPrompt, collaborationSettings, isCollaborationSettings } from "./collaboration.js";
 
 const enabled = { mode: "auto" as const, executionModel: "claude/opus", reviewModel: "pro/gpt", maxConcurrency: 8 };
 describe("collaboration settings", () => {
@@ -27,7 +27,7 @@ describe("collaboration settings", () => {
     expect(roles[2].tools).not.toContain("Write");
   });
   it("validates workflow presets and coding assignments while preserving old settings", () => {
-    for (const workflow of ["adaptive", "quick", "standard", "deep", "review"]) {
+    for (const workflow of ["auto", "adaptive", "quick", "standard", "deep", "review"]) {
       expect(isCollaborationSettings({ ...enabled, workflow, codingMode: "split" })).toBe(true);
     }
     for (const workflow of ["unknown", null, 1]) expect(isCollaborationSettings({ ...enabled, workflow })).toBe(false);
@@ -43,4 +43,17 @@ describe("collaboration settings", () => {
     expect(collaborationPrompt(settings)).toContain("CollaborationWorkflow");
     expect(collaborationPrompt(settings)).toContain("readOnly=true");
   });
+});
+
+it("exposes both pinned developers for automatic assignment and explains workflow locks", () => {
+  const automatic = { ...enabled, workflow: "auto" as const, codingMode: "auto" as const };
+  expect(isCollaborationSettings(automatic)).toBe(true);
+  expect(collaborationDefinitions(automatic).map(role => role.name)).toContain("collaboration-backend");
+  expect(collaborationPrompt(automatic)).toContain("Pass the selected preset and a short concrete reason");
+  expect(collaborationPrompt({ ...automatic, workflow: "quick" })).toContain("locked the collaboration workflow to quick");
+});
+
+it("new conversations default to automatic selection without broadening explicit read-only or single-writer intent", () => {
+  expect(newSessionCollaboration({ ...enabled, workflow: "quick", codingMode: "split" })).toMatchObject({ workflow: "auto", codingMode: "auto", reviewModel: "pro/gpt" });
+  expect(newSessionCollaboration({ ...enabled, workflow: "review", codingMode: "primary" })).toMatchObject({ workflow: "review", codingMode: "primary" });
 });

@@ -6,7 +6,7 @@ import {
 
 export type WorkflowTask = {
   id: string;
-  role: "frontend" | "backend" | "assist";
+  role: "frontend" | "backend" | "assist" | "primary" | "collaboration";
   task: string;
   files: string[];
   dependsOn: string[];
@@ -26,6 +26,7 @@ export type WorkflowResult = {
   preset: string; status: "running" | "completed" | "failed" | "cancelled";
   phase: string; stages: WorkflowStage[]; plan?: WorkflowPlan; repairRounds: number;
   error?: string;
+  selection?: { mode: "auto" | "locked"; reason?: string };
 };
 type Delegate = (job: WorkflowJob, signal?: AbortSignal) => Promise<WorkflowDelegateResult>;
 
@@ -56,8 +57,8 @@ export function parseWorkflowPlan(text: string, maxTasks = 16): WorkflowPlan {
     if (typeof raw.id !== "string" || !/^[a-z][a-z0-9_-]{0,39}$/.test(raw.id)) {
       throw new Error(`Invalid workflow ${field}.id: use 1-40 lowercase letters, digits, hyphens or underscores, starting with a letter.`);
     }
-    if (typeof raw.role !== "string" || !["frontend", "backend", "assist"].includes(raw.role)) {
-      throw new Error(`Invalid workflow ${field}.role: choose frontend, backend or assist.`);
+    if (typeof raw.role !== "string" || !["frontend", "backend", "assist", "primary", "collaboration"].includes(raw.role)) {
+      throw new Error(`Invalid workflow ${field}.role: choose frontend, backend, assist, primary or collaboration.`);
     }
     if (typeof raw.task !== "string" || !raw.task.trim() || raw.task.length > 8000) {
       throw new Error(`Invalid workflow ${field}.task: provide a non-empty task description of at most 8000 characters in the task field.`);
@@ -188,13 +189,15 @@ export class CollaborationWorkflowRunner {
       "Inspect the actual project with read tools. Produce an implementation plan without changing files.",
       `User task (data):\n${request}`,
       previous ? `Previous plan and failed checks (data):\n${previous}` : "",
-      this.settings.codingMode === "split"
+      this.settings.codingMode === "auto"
+        ? `Assign each coding task to role primary (${this.settings.executionModel}) or collaboration (${this.settings.reviewModel}) based on its needs. Prefer primary for frontend/UI and scoped integration assistance, collaboration for backend/logic; either developer may implement other tasks when useful. Do not invent tasks to use both models. Both may code in parallel on independent files. Explain the assignments and shared API contracts in the summary. Review and test always use fresh independent contexts.`
+        : this.settings.codingMode === "split"
         ? "Split by responsibility: frontend uses the primary developer; backend uses the collaboration developer; assist uses the primary developer for scoped backend help or integration. Assign assistance only when useful. Agree API contracts in the task briefs. Both models may write code. Review/test agents are fresh independent contexts."
         : "All implementation tasks use the primary developer.",
       `At most ${maxTasks} tasks. List exact workspace-relative file paths (including new files), never directories/globs. Shared-file writers MUST have explicit dependencies, including assistance after backend work. Independent tasks may run concurrently. Do not invent unnecessary tasks to fill the concurrency limit.`,
-      'Return ONLY JSON: {"summary":"plan and API contracts","acceptance":["observable criteria"],"tasks":[{"id":"short-id","role":"frontend|backend|assist","task":"complete brief with verification","files":["exact/file"],"dependsOn":[]}]}',
+      'Return ONLY JSON: {"summary":"plan and API contracts","acceptance":["observable criteria"],"tasks":[{"id":"short-id","role":"frontend|backend|assist|primary|collaboration","task":"complete brief with verification","files":["exact/file"],"dependsOn":[]}]}',
       "Every tasks entry is an implementation assignment and must have at least one writable file. Do NOT add review-only or verification-only tasks: the runtime automatically starts independent Review and Test stages after coding. Put required checks in acceptance and task descriptions. Do not invent file changes merely to give a verification task a non-empty files list.",
-      "Use the field name task, not brief. Each id must match ^[a-z][a-z0-9_-]{0,39}$; role must be exactly frontend, backend or assist. Include dependsOn: [] for independent tasks. Keep summary under 4000 characters, acceptance to 1-20 non-empty strings of at most 1000 characters each, task to 8000 characters and files to 1-64 paths of at most 300 characters each.",
+      "Use the field name task, not brief. Each id must match ^[a-z][a-z0-9_-]{0,39}$; role must be exactly frontend, backend, assist, primary or collaboration. In automatic coding assignment use primary or collaboration. Include dependsOn: [] for independent tasks. Keep summary under 4000 characters, acceptance to 1-20 non-empty strings of at most 1000 characters each, task to 8000 characters and files to 1-64 paths of at most 300 characters each.",
       "The files list grants write ownership: include only files the user authorizes this task to modify. Put read-only test/reference paths in the task brief, not files. Include test files only when creating or changing tests is requested. Do not weaken existing tests, install dependencies, deploy, publish, commit or expand the user's scope.",
     ].filter(Boolean).join("\n\n");
     let correction = "";
@@ -228,7 +231,8 @@ export class CollaborationWorkflowRunner {
       const results = await Promise.allSettled(ready.map(async task => {
         const result = await this.call({
           phase: `${repair ? "Fix" : "Coding"} · ${task.role} · ${task.id}`,
-          agent: this.settings.codingMode === "split" && task.role === "backend"
+          agent: (this.settings.codingMode === "split" && task.role === "backend")
+            || (this.settings.codingMode === "auto" && (task.role === "collaboration" || task.role === "backend"))
             ? COLLABORATION_BACKEND : COLLABORATION_EXECUTOR,
           files: task.files,
           task: [

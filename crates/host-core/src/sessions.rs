@@ -1805,6 +1805,7 @@ pub fn fork_session_through(
         for (seq, record) in records.iter().enumerate() {
             insert_index_row(&tx, &id, seq as i64, None, record, texts[seq].as_deref())?;
         }
+        crate::session_workflow::copy(db, source_id, &id)?;
         tx.commit()?;
         Ok(())
     })();
@@ -1914,10 +1915,13 @@ pub fn configure_session_with_thinking(
 }
 
 pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
+    let tx = db.conn().unchecked_transaction()?;
     let n = db
         .conn()
         .prepare_cached("DELETE FROM sessions WHERE id = ?1")?
         .execute(params![id])?;
+    db.kv_delete(crate::session_workflow::NAMESPACE, id)?;
+    tx.commit()?;
     if n > 0 {
         // Here rather than in the RPC handler so every deletion path (UI,
         // failed scheduled-run cleanup) also drops the transcript files.

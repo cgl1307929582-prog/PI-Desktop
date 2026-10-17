@@ -315,7 +315,9 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
     const sessionMode = typeof session.mode === "string" ? session.mode : undefined;
     const defaultMode = typeof settings.defaultMode === "string" ? settings.defaultMode : undefined;
     const mode = normalizeMode(overrides.mode ?? sessionMode ?? defaultMode ?? "agent");
-    const collaboration = collaborationSettings(settings.collaboration);
+    const collaboration = collaborationSettings(mode === "agent" && !sessionId.startsWith("native-pi:")
+      ? (await host.call<{ settings: unknown }>("session.workflow.get", { sessionId })).settings
+      : settings.collaboration);
     const roles = mode === "agent" ? collaborationDefinitions(collaboration) : [];
     if (roles.length) {
       const unavailable = unavailableCollaborationModels(collaboration, providers.providers);

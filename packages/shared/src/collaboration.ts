@@ -2,9 +2,9 @@ import type { SubagentDefinition, SubagentModelPin } from "./subagent-definition
 
 export const COLLABORATION_MODES = ["off", "auto", "deep"] as const;
 export type CollaborationMode = (typeof COLLABORATION_MODES)[number];
-export const COLLABORATION_WORKFLOWS = ["adaptive", "quick", "standard", "deep", "review"] as const;
+export const COLLABORATION_WORKFLOWS = ["auto", "adaptive", "quick", "standard", "deep", "review"] as const;
 export type CollaborationWorkflowPreset = (typeof COLLABORATION_WORKFLOWS)[number];
-export const COLLABORATION_CODING_MODES = ["primary", "split"] as const;
+export const COLLABORATION_CODING_MODES = ["auto", "primary", "split"] as const;
 export type CollaborationSettings = {
   mode: CollaborationMode;
   executionModel: string;
@@ -18,6 +18,13 @@ export type CollaborationSettings = {
 export const DEFAULT_COLLABORATION: CollaborationSettings = {
   mode: "off", executionModel: "", reviewModel: "", maxConcurrency: 8,
 };
+/** New composer defaults preserve explicit read-only and single-writer intent. */
+export function newSessionCollaboration(value: unknown): CollaborationSettings {
+  const saved = collaborationSettings(value);
+  return { ...saved, workflow: saved.workflow === "review" ? "review" : "auto",
+    codingMode: saved.codingMode === "primary" ? "primary" : "auto" };
+}
+
 export const COLLABORATION_EXECUTOR = "collaboration-executor";
 export const COLLABORATION_ANALYST = "collaboration-analyst";
 export const COLLABORATION_VERIFIER = "collaboration-verifier";
@@ -84,10 +91,10 @@ export function collaborationDefinitions(settings: CollaborationSettings): Subag
     make(COLLABORATION_VERIFIER, "Execute tests and boundary checks using the review model.", settings.reviewModel,
       ["Read", "Glob", "Grep", "Bash"],
       "Run existing tests and focused boundary checks. Do not change source files, weaken assertions, install dependencies, or start background commands. Report exact commands, exit codes, and failures. Test execution is separate from the final independent source review."),
-    ...(settings.codingMode === "split" ? [
-      make(COLLABORATION_BACKEND, "Implement backend tasks using the collaboration model.", settings.reviewModel,
+    ...(settings.codingMode !== "primary" && settings.codingMode ? [
+      make(COLLABORATION_BACKEND, "Implement assigned code using the collaboration model.", settings.reviewModel,
         ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
-        "Implement the assigned backend task and its tests. Own only the listed files. Respect the agreed frontend/backend contract. Report actual changes and checks; a fresh independent agent reviews your work."),
+        "Implement the assigned coding task and its tests. Own only the listed files. Respect the agreed frontend/backend contract. Report actual changes and checks; a fresh independent agent reviews your work."),
     ] : []),
   ];
 }
@@ -102,11 +109,13 @@ export function collaborationPrompt(settings: CollaborationSettings): string {
   ] : [];
   if (hasCollaborationWorkflow(settings)) return [
     ...routing,
-    `The configured collaboration workflow is ${settings.workflow}. No trigger phrase is required.`,
+    settings.workflow === "auto"
+      ? "Choose a workflow for this user turn yourself, after necessary inspection: quick for a bounded repair, standard for ordinary feature development or frontend/backend work, deep for broad or high-risk changes needing extra plan/regression/boundary review, review for analysis without changes. Pass the selected preset and a short concrete reason to CollaborationWorkflow. Do not create an extra agent just to select a workflow. Reassess each new user turn; this choice does not change session settings."
+      : `The user locked the collaboration workflow to ${settings.workflow}. Do not replace it with another preset. No trigger phrase is required.`,
     `${settings.mode === "auto" ? "Only when collaboration is warranted" : "For implementation, repairs or code review"}, call CollaborationWorkflow once with the complete task, constraints and acceptance criteria. The runtime runs planning, dependency-ordered coding, fresh independent review/test agents, and bounded repair. Do not launch Task yourself or bypass an engaged workflow through other tools, plugins or shells.`,
     "Simple questions may be answered directly. Preserve read-only requests: set readOnly=true when the user requests analysis, a plan, or a review without modifications.",
     ...(settings.workflow === "review" ? ["The selected review preset is always read-only, including direct analysis. Parent Write/Edit/Bash remain disabled; use Read/Glob/Grep or a read-only CollaborationWorkflow."] : []),
-    `Coding assignment: ${settings.codingMode === "split" ? "the primary model handles frontend and scoped assistance; the collaboration model handles backend" : "the primary model handles all implementation"}. The collaboration model plans, reviews and tests in separate contexts.`,
+    `Coding assignment: ${settings.codingMode === "auto" ? "the planner assigns each coding task to either pinned developer based on its needs; both may implement code, and independent tasks may run together" : settings.codingMode === "split" ? "the primary model handles frontend and scoped assistance; the collaboration model handles backend" : "the primary model handles all implementation"}. The collaboration model plans, reviews and tests in separate contexts.`,
     `All children are native Task delegates in this conversation. Never create Worker sessions or windows. ${settings.mode === "deep" ? "Parent Write/Edit/Bash are disabled. " : ""}Permissions remain unchanged.`,
     "Summarize the workflow's actual evidence. Failed, canceled, invalid or unverified stages cannot be reported as a successful delivery.",
   ].join("\n");
@@ -117,6 +126,7 @@ export function collaborationPrompt(settings: CollaborationSettings): string {
     `Answer simple questions yourself. ${settings.mode === "auto" ? "When collaboration is warranted, delegate" : "Delegate"} implementation and repairs to ${COLLABORATION_EXECUTOR}; delegate planning, exploration and independent review to ${COLLABORATION_ANALYST}; delegate test execution to ${COLLABORATION_VERIFIER}. Use their pinned models without overrides or fallbacks.`,
     `${settings.mode === "deep" ? "Parent Write, Edit and Bash calls are disabled in this mode. " : ""}Give delegates the user requirements, exact workspace, permitted files, dependencies and acceptance criteria. Preserve read-only requests.`,
     `At most ${settings.maxConcurrency} delegates may run at once. ${settings.mode === "deep" ? "For substantial independent work, aim for two execution delegates and up to six analysis/verification delegates. Split work by file ownership and dependencies." : "Use only the delegates needed for the task; usually one implementer plus independent verification is enough."}`,
+    ...(settings.codingMode === "auto" ? [`Choose ${COLLABORATION_EXECUTOR} or ${COLLABORATION_BACKEND} per coding task. Prefer the primary developer for UI/frontend and integration assistance, and the collaboration developer for backend/logic; either may work on other areas when useful. Use only the team needed, with exact file ownership.`] : []),
     ...(settings.codingMode === "split" ? [`Use ${COLLABORATION_BACKEND} for backend implementation on the collaboration model. The primary executor handles frontend and explicitly scoped backend assistance. Sequence writers of the same file.`] : []),
     "Start independent delegates together in one Task-only tool batch. Wait for upstream work before dependent tasks. Do not concurrently edit the same files.",
     "Once collaboration is engaged, the runtime runs an independent read-only review after file writes or shell execution, before your next model response. A failed or inconclusive review requires a repair or a truthful blocked report; only a passing review of the latest work permits completion. There are at most three review attempts per turn. Direct work without delegation does not start an automatic reviewer.",

@@ -1,3 +1,4 @@
+import { selectCollaborationWorkflow } from "./collaboration-routing.js";
 import { collaborationSettings, collaborationPrompt, hasCollaborationWorkflow, COLLABORATION_ANALYST, COLLABORATION_EXECUTOR, COLLABORATION_VERIFIER, COLLABORATION_ROLE_NAMES, type CollaborationSettings } from "@pi-desktop/shared";
 import { CollaborationReview } from "./collaboration-review.js";
 import { CollaborationWorkflowRunner, assertWorkflowWritePath, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult, type WorkflowResult } from "./collaboration-workflow.js";
@@ -5571,27 +5572,30 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       description: `${this.collaboration.mode === "auto" ? "Optional: decide whether collaboration materially helps first. Handle small tasks and their tests directly without this tool. When needed, run" : "Run"} the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use once for the complete task, including any direct edits already made. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
       parameters: Type.Object({
         task: Type.String({ minLength: 1, maxLength: 16000, description: "Complete task, constraints, agreed API behavior and acceptance criteria." }),
+        preset: Type.Optional(Type.Union([Type.Literal("quick"), Type.Literal("standard"), Type.Literal("deep"), Type.Literal("review")], { description: "Required for automatic selection: choose the smallest sufficient workflow. A manually locked preset cannot be changed." })),
+        reason: Type.Optional(Type.String({ minLength: 1, maxLength: 500, description: "Required for automatic selection: briefly explain why this workflow fits the actual task." })),
         readOnly: Type.Optional(Type.Boolean({ description: "Analyze, plan or review without implementation or shell commands." })),
       }),
       execute: async (_toolCallId, params, signal, onUpdate) => {
         if (this.workflowRunning) throw new Error("A collaboration workflow is already running.");
         if (!isRecord(params) || typeof params.task !== "string" || !params.task.trim()) throw new Error("A workflow task is required.");
         if (!this.workflowResult) {
+          const selected = selectCollaborationWorkflow(this.collaboration, params);
           this.workflowRunning = true;
           try {
-            const runner = new CollaborationWorkflowRunner(this.collaboration,
+            const runner = new CollaborationWorkflowRunner(selected.settings,
               (job, abortSignal) => this.runCollaborationTask(job, abortSignal),
               (result) => {
-                this.workflowResult = result;
+                this.workflowResult = { ...result, selection: selected.selection };
                 onUpdate?.({
                   content: [{ type: "text", text: result.stages.map(stage => `${stage.status}: ${stage.phase}`).join("\n") }],
-                  details: { workflow: { ...result, plan: undefined,
+                  details: { workflow: { ...result, selection: selected.selection, plan: undefined,
                     stages: result.stages.map(stage => ({ id: stage.id, phase: stage.phase, agent: stage.agent, status: stage.status })) } },
                 });
               });
-            this.workflowResult = await runner.run(
+            this.workflowResult = { ...await runner.run(
               `${this.collaborationRequest.slice(0, 12000)}\n\nTask brief: ${params.task}`,
-              params.readOnly === true, signal);
+              params.readOnly === true, signal), selection: selected.selection };
           } finally { this.workflowRunning = false; }
         }
         const result = this.workflowResult;

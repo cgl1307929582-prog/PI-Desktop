@@ -123,7 +123,7 @@ export function createLiveWorkBridge(input: {
     sessionId: string,
     session: Record<string, unknown>,
     settings: unknown,
-    overrides: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel },
+    overrides: { providerId?: string; modelId?: string; thinkingLevel?: ThinkingLevel; providerOnly?: boolean },
   ) => Promise<LaunchResult>;
   completeIntent?: typeof completeOneShot;
   onOperation: (callId: string, update: LiveWorkOperationUpdate) => void;
@@ -517,6 +517,7 @@ export function createLiveWorkBridge(input: {
           ...(typeof session.providerId === "string" ? { providerId: session.providerId } : {}),
           ...(typeof session.modelId === "string" ? { modelId: session.modelId } : {}),
           thinkingLevel: "off",
+          providerOnly: true,
         },
       ), signal, 2_000);
       signal.throwIfAborted();

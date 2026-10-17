@@ -32,6 +32,7 @@ function launchRuntime() {
       isAvailable: () => true,
       call: async (method) => {
         if (method === "commandShells.list") return { configuredId: "bash", effective: shell, fallback: false, choices: [shell] };
+        if (method === "session.workflow.get") return { settings: undefined };
         if (method === "providers.list") return { providers: [provider] };
         if (method === "providers.getSecret") return {};
         if (method === "agents.active") return { subagents: [] };

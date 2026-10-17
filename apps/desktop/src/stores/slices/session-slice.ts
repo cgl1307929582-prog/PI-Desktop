@@ -783,6 +783,7 @@ export function createSessionSlice({
       if (!sessionId) {
         set((state) => ({
           draftConfiguration: {
+            ...state.draftConfiguration,
             mode: config.mode,
             thinkingLevel: config.thinkingLevel,
             providerId:

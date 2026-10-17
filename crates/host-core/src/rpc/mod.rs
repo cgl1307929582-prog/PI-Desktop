@@ -3,6 +3,7 @@ mod plugin_reviews_rpc;
 mod remote_tools;
 mod scheduled_rpc;
 mod scheduled_tools;
+mod session_workflow;
 mod todos;
 mod window_corner_rpc;
 mod worktree_rpc;
@@ -1847,6 +1848,10 @@ async fn handle_request(
         "tools.remoteComplete" | "tools.workspaceExecute" | "tools.workspaceAbort" => {
             remote_tools::handle(state, method, params, tx).await
         }
+        "session.workflow.get" | "session.workflow.set" => {
+            let st = state.lock().await;
+            session_workflow::handle(&st.db, method, &params)
+        }
         method if method.starts_with("session.collaboration.") => {
             let st = state.lock().await;
             crate::session_collaboration::handle(&st.db, method, &params)
@@ -2557,6 +2562,9 @@ async fn handle_request(
             Ok(json!({ "sessions": sessions }))
         }
         "session.create" => {
+            if let Some(value) = params.get("collaboration") {
+                crate::session_workflow::validate(value).map_err(session_workflow::error)?;
+            }
             let thinking_level = thinking_level_param(&params)?;
             let permission_parent = permission_parent_param(&params)?;
             // ADR 0329: an isolated session gets its own git worktree.
@@ -2594,6 +2602,11 @@ async fn handle_request(
             } else {
                 None
             };
+            let creation = st
+                .db
+                .conn()
+                .unchecked_transaction()
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let session = sessions::create_session_with_options(
                 &st.db,
                 sessions::SessionCreateOptions {
@@ -2622,6 +2635,16 @@ async fn handle_request(
                 },
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            if let Some(value) = params.get("collaboration") {
+                crate::session_workflow::set(&st.db, &session.id, value)
+                    .map_err(session_workflow::error)?;
+            } else {
+                crate::session_workflow::get(&st.db, &session.id)
+                    .map_err(session_workflow::error)?;
+            }
+            creation
+                .commit()
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             let Some(project) = isolated_project else {
                 let session = remote_tools::decorate_session(
                     &st.db,

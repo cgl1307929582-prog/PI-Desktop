@@ -4,7 +4,7 @@ import { createHeadlessLaunchResolver, type HostProviderRecord } from "./launch-
 
 type Call = { method: string; params: Record<string, unknown> };
 
-function hostWith(providers: HostProviderRecord[], secrets: Record<string, string> = {}) {
+function hostWith(providers: HostProviderRecord[], secrets: Record<string, string> = {}, workflow: unknown = undefined) {
   const calls: Call[] = [];
   return {
     calls,
@@ -12,6 +12,7 @@ function hostWith(providers: HostProviderRecord[], secrets: Record<string, strin
       async call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
         calls.push({ method, params });
         switch (method) {
+          case "session.workflow.get": return { settings: workflow } as T;
           case "commandShells.list":
             return {
               configuredId: null,
@@ -148,11 +149,12 @@ it("resolves collaboration pins by provider identity and rejects removed opt-in"
   const execution = { ...provider, id: "claude", models: [{ id: "opus", availableForSubagents: true, thinkingLevels: ["off"] }] };
   const pro = { ...provider, id: "pro", name: "pro", models: [{ id: "gpt", availableForSubagents: true, thinkingLevels: ["off"] }] };
   const other = { ...pro, id: "other", name: "other" };
-  const { host } = hostWith([execution, other, pro], { claude: "test", pro: "test", other: "test" });
+  const collaboration = { mode: "deep", workflow: "auto", codingMode: "auto", executionModel: "claude/opus", reviewModel: "pro/gpt", maxConcurrency: 8 };
+  const { host, calls } = hostWith([execution, other, pro], { claude: "test", pro: "test", other: "test" }, collaboration);
   const resolver = createHeadlessLaunchResolver({ getHost: () => host, dataDir: "/data", log: () => undefined });
-  const collaboration = { mode: "deep", executionModel: "claude/opus", reviewModel: "pro/gpt", maxConcurrency: 8 };
-  const launch = await resolver.resolve("s1", { providerId: "claude", modelId: "opus" }, { collaboration });
+  const launch = await resolver.resolve("s1", { providerId: "claude", modelId: "opus" }, { collaboration: { ...collaboration, mode: "off" } });
   expect(launch.sidecarParams.collaboration).toEqual(collaboration);
+  expect(calls.find(call => call.method === "session.workflow.get")?.params).toEqual({ sessionId: "s1" });
   expect(launch.sidecarParams.subagents?.find(role => role.name === "collaboration-analyst")?.model).toEqual({ providerId: "pro", modelId: "gpt" });
   expect(launch.sidecarParams.subagentProviders?.["pro/gpt"]?.id).toBe("pro");
   const plan = await resolver.resolve("s1", { providerId: "claude", modelId: "opus", mode: "plan" }, { collaboration });

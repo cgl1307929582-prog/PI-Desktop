@@ -18214,3 +18214,10 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Acceptance:** Deterministic tests pass. Real-provider evidence records actual model assignments, stage results, peak concurrency and sidebar count separately.
 - **Milestone:** Fork feature.
 - **Status:** Automated by `collaboration-workflow.test.ts`, `collaboration-runtime.test.ts`, `collaboration-composer-user-path.test.mjs`, shared/Rust settings validation; live provider acceptance is separate.
+
+
+#### E2E-CHAT-session-workflow-routing
+
+- **Steps:** Save Automatic workflow/assignment in one conversation and lock Deep in another. Switch, restart, fork, and delete; keep global preferences and transcript content unchanged. Refuse saves during a running turn, pending approval and queued/running plan execution. Save a draft without creating a session or changing reasoning. Retry a failed fetch; ignore a response from the previous conversation.
+- **Runtime:** In consecutive turns select Quick, Standard and read-only Review with reasons; return to solo work. Reject missing auto decisions and conflicting manual overrides before children start. Assign either developer to either frontend/backend task, retaining pinned review/test contexts and exact file/dependency guards. Provider-only plugin/voice completions bypass session lookup.
+- **Coverage:** `scripts/e2e-session-workflow.mjs` exercises a real host and restart; composer, launch-resolver, routing and runtime tests cover their boundaries. Real Claude/pro GPT calls are recorded separately from HTTP fixtures, including assignments, test commands and unchanged sidebar session count.

@@ -13,15 +13,16 @@ instruction cannot ensure an independent review follows file modifications.
 ## Decision
 
 The composer owns an Off / Smart / Always control and its model/concurrency form.
-An optional `AppSettings.collaboration` object stores the mode, full
-`provider-id/model-id` execution and review pins, and concurrency (1–10,
-default 8). Missing settings mean Off. Saving affects newly started Agent
-turns on this installation. Permission mode is a separate setting. Plan,
+Each conversation stores its mode, full `provider-id/model-id` execution and
+review pins, workflow, coding assignment and concurrency (1–10, default 8)
+through host-owned session workflow RPCs. Legacy `AppSettings.collaboration`
+is an initial seed and is never overwritten by this composer. Missing mode
+means Off. Saving affects the next Agent turn in that conversation. Permission mode is a separate setting. Plan,
 Goal, remote composer surfaces and running turns do not offer this control.
 
 Both launch resolvers validate enabled provider rows, subagent opt-in, and
 resolved credentials. There is no fallback to another account. Agent mode
-adds three app-owned native definitions, plus a backend developer in split mode,
+adds three app-owned native definitions, plus a collaboration developer in automatic or split assignment,
 before the existing catalog (bounded
 by the existing 16-definition limit): executor, read-only analyst, and test
 verifier. Each has a distinct prompt and tool set. Their names are reserved
@@ -73,8 +74,9 @@ keeps parent Write/Edit/Bash disabled in both modes, even for direct analysis.
 Solo work uses the conversation's model, not the configured delegate model,
 and does not automatically create a reviewer or verifier. Choosing the route
 is a model judgment, not a deterministic complexity classifier or a guarantee.
-Off and missing settings retain their existing behavior. No persisted values,
-provider bindings, permissions, database schema or history format change.
+Off retains its existing behavior. Provider bindings, permissions, database
+schema and history format remain compatible; per-conversation choices use the
+existing KV extension boundary described below.
 
 ## Consequences
 
@@ -108,14 +110,33 @@ separately; a fixture does not establish provider availability.
 
 ## Workflow presets and coding assignment
 
-The same composer menu stores optional `workflow` and `codingMode` fields.
-Missing fields retain flexible collaboration and primary-model implementation.
-Presets are Flexible, Quick fix, Standard development, Deep development and
-Read-only review. Coding can use the primary model alone, or assign frontend
-and scoped assistance to the primary model and backend implementation to the
-collaboration model. Planning, independent source reviews and test execution
-always use fresh collaboration-model contexts. Both models can therefore write
-code without allowing the implementation context to approve its own work.
+The composer stores workflow and coding choices separately for each conversation.
+**Automatic** lets the current model choose Quick fix, Standard development,
+Deep development or Read-only review for this turn, with a short reason recorded
+in the workflow result. No extra router agent is started. Selecting a named
+preset manually locks it until you choose Automatic again; Flexible remains a
+manual option. A turn's automatic decision never overwrites the saved choice.
+Smart still decides whether collaboration is useful before selecting its workflow.
+
+**Automatic assignment** lets the planner assign each exact-file task to the
+primary or collaboration developer. Claude can handle frontend or backend work;
+pro GPT can also write either. Assignments depend on the task and dependencies,
+not a fixed quota of agents. Primary-only and frontend/backend split remain
+available. Planning, independent source reviews and test execution always use
+fresh collaboration-model contexts, including when that model also writes code.
+The implementation context cannot approve its own work.
+
+Preferences use host-owned KV namespace `session-workflow-v1`, through
+`session.workflow.get/set`; no transcript or schema rewrite is needed. The first
+read snapshots legacy global preferences without changing them, preserving
+explicit read-only and primary-only choices. New Desktop drafts default to
+Automatic workflow/assignment except those preserved restrictions. Drafts do not
+create conversations until sent. Forks copy preferences; deletion cleans only
+that conversation's record. Saves affect its next turn, survive restart, and
+are refused during running turns, pending plan approval or queued/running plan
+execution. The composer handles loading, retry and late responses after a switch.
+Provider-only plugin completions and voice classification do not load session
+workflow settings or start collaboration.
 
 Structured presets expose `CollaborationWorkflow`. For development the runtime
 executes Plan → dependency-ordered Coding → Review + Test → bounded Fix → fresh

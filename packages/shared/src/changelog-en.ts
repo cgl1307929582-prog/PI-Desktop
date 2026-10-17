@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Automatically select a workflow and assign coding tasks across models, with independent saved choices and manual locks for every conversation.",
       "Let the main model decide when to collaborate: Smart handles small edits directly and starts native subagents only when useful.",
       "Choose saved development workflows with planning, frontend/backend model assignments, independent review, executed tests and bounded repair.",
       "Choose automatic multi-model collaboration from the composer, with pinned execution/review channels and native children in the same conversation.",

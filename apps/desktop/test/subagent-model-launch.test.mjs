@@ -23,11 +23,14 @@ test("launch resolves definition-only pins without granting Task.model selection
   };
   const providers = [provider];
   const shell = { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true };
+  let workflow;
+  let workflowReads = 0;
   const runtime = createSessionLaunchRuntime({
     runtimeState: { host: {
       isAvailable: () => true,
       call: async (method) => {
         if (method === "commandShells.list") return { configuredId: "bash", effective: shell, fallback: false, choices: [shell] };
+        if (method === "session.workflow.get") { workflowReads++; return { settings: workflow }; }
         if (method === "providers.list") return { providers };
         if (method === "providers.getSecret") return {};
         if (method === "agents.active") return { subagents: [{ id: "reviewer", path }] };
@@ -82,16 +85,26 @@ test("launch resolves definition-only pins without granting Task.model selection
 
   const collaboration = { mode: "auto", executionModel: "fixture-provider/allowed", reviewModel: "other-account/private", maxConcurrency: 8 };
   provider.models[2].availableForSubagents = true;
-  const settings = { collaboration };
+  workflow = { ...collaboration, workflow: "standard", codingMode: "auto" };
+  const settings = { collaboration: { ...collaboration, mode: "off" } };
   const resolveCollaboration = (mode = "agent") => runtime.resolveAgentRuntimeLaunch("session", {
     providerId: provider.id, modelId: "parent", projectPath: root, mode,
   }, settings);
   const automatic = (await resolveCollaboration()).sidecarParams;
-  assert.deepEqual(automatic.collaboration, collaboration);
+  assert.deepEqual(automatic.collaboration, workflow);
   assert.equal(automatic.subagentProviders["other-account/private"].id, "other-account");
   assert.deepEqual(automatic.subagents.find(d => d.name === "collaboration-analyst").model,
     { providerId: "other-account", modelId: "private" });
   assert.equal((await resolveCollaboration("plan")).sidecarParams.subagents.some(d => d.name.startsWith("collaboration-")), false);
+  const beforeOneShot = workflowReads;
+  for (const id of ["plugin-complete:ephemeral", "live-work-classifier:ephemeral"]) {
+    const oneShot = await runtime.resolveAgentRuntimeLaunch(id, {}, settings, {
+      providerId: provider.id, modelId: "parent", providerOnly: true,
+    });
+    assert.equal(oneShot.sidecarParams.collaboration.mode, "off");
+    assert.equal(oneShot.sidecarParams.subagents.some(role => role.name.startsWith("collaboration-")), false);
+  }
+  assert.equal(workflowReads, beforeOneShot, "one-shot completions must not require a stored session");
   provider.models[2].availableForSubagents = false;
   await assert.rejects(resolveCollaboration(), { errorCode: "MODEL_NOT_CONFIGURED" });
 

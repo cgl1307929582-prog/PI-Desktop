@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Selecione automaticamente o fluxo e os modelos de desenvolvimento por tarefa, com preferências e bloqueio manual por conversa.",
       "O modelo principal decide quando colaborar: o modo inteligente resolve pequenas alterações diretamente e inicia subagentes apenas quando são úteis.",
       "Fluxos de desenvolvimento salvos com planejamento, modelos para frontend e backend, revisão independente, testes e correções limitadas.",
       "Ative a colaboração automática entre modelos pelo editor, com provedores fixos para execução e revisão e subagentes na mesma conversa.",

@@ -264,3 +264,20 @@ it("cancellation during planning prevents every later stage", async () => {
   expect((await runner.run("Implement.", false, abort.signal)).status).toBe("cancelled");
   expect(roles).toHaveLength(1);
 });
+
+it("automatic coding assignment can give either area to either pinned developer", async () => {
+  const jobs: WorkflowJob[] = [];
+  const runner = new CollaborationWorkflowRunner({ ...settings, codingMode: "auto" }, async job => {
+    jobs.push(job);
+    if (job.phase === "Plan") return result(plan([
+      task("backend-help", "primary", ["api.js"]),
+      task("frontend-help", "collaboration", ["web.js"]),
+    ]));
+    return result(pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  expect((await runner.run("Split this work according to task needs.")).status).toBe("completed");
+  expect(jobs.find(job => job.phase.includes("backend-help"))?.agent).toBe("collaboration-executor");
+  expect(jobs.find(job => job.phase.includes("frontend-help"))?.agent).toBe("collaboration-backend");
+  expect(jobs.find(job => job.phase === "Review")?.agent).toBe("collaboration-analyst");
+  expect(jobs.find(job => job.phase === "Test")?.agent).toBe("collaboration-verifier");
+});

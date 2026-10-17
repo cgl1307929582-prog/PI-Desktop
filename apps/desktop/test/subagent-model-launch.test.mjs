@@ -79,4 +79,20 @@ test("launch resolves definition-only pins without granting Task.model selection
   assert.equal(collision.subagentProviders["fixture/private"].id, provider.id);
   assert.equal(collision.subagentProviders["other-account/private"].id, "other-account");
   assert.deepEqual(collision.subagentModelKeys, ["other-account/private"]);
+
+  const collaboration = { mode: "auto", executionModel: "fixture-provider/allowed", reviewModel: "other-account/private", maxConcurrency: 8 };
+  provider.models[2].availableForSubagents = true;
+  const settings = { collaboration };
+  const resolveCollaboration = (mode = "agent") => runtime.resolveAgentRuntimeLaunch("session", {
+    providerId: provider.id, modelId: "parent", projectPath: root, mode,
+  }, settings);
+  const automatic = (await resolveCollaboration()).sidecarParams;
+  assert.deepEqual(automatic.collaboration, collaboration);
+  assert.equal(automatic.subagentProviders["other-account/private"].id, "other-account");
+  assert.deepEqual(automatic.subagents.find(d => d.name === "collaboration-analyst").model,
+    { providerId: "other-account", modelId: "private" });
+  assert.equal((await resolveCollaboration("plan")).sidecarParams.subagents.some(d => d.name.startsWith("collaboration-")), false);
+  provider.models[2].availableForSubagents = false;
+  await assert.rejects(resolveCollaboration(), { errorCode: "MODEL_NOT_CONFIGURED" });
+
 });

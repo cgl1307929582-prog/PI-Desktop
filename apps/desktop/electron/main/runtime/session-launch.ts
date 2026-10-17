@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import {
   ErrorCodes as SharedErrorCodes,
+  collaborationSettings,
+  collaborationDefinitions,
+  unavailableCollaborationModels,
+  MAX_SUBAGENT_DEFINITIONS,
   isActiveInProject,
   isCommandShellCatalog,
   JEV_API_KEY_SECRET_REF,
@@ -538,6 +542,20 @@ export function createSessionLaunchRuntime({
       // A switched-off builtin is dropped from what this prompt may delegate to.
       disabledBuiltins: await disabledBuiltinSubagents(),
     });
+    const mode = normalizeMode(
+      overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
+    );
+    const collaboration = collaborationSettings(settings.collaboration);
+    const collaborationRoles = mode === "agent" ? collaborationDefinitions(collaboration) : [];
+    if (collaborationRoles.length) {
+      const unavailable = unavailableCollaborationModels(collaboration, providers.providers);
+      if (unavailable.length) throw Object.assign(new Error("Collaboration models are unavailable or no longer enabled for subagents. Update the collaboration model selection."), { errorCode: ErrorCodes.MODEL_NOT_CONFIGURED });
+      const reserved = new Set(collaborationRoles.map((role) => role.name));
+      subagentCatalog.definitions = [
+        ...collaborationRoles,
+        ...subagentCatalog.definitions.filter((role) => !reserved.has(role.name)),
+      ].slice(0, MAX_SUBAGENT_DEFINITIONS);
+    }
     const subagentBindings = await resolveSubagentProviders({
       definitions: subagentCatalog.definitions,
       providers: providers.providers,
@@ -568,6 +586,9 @@ export function createSessionLaunchRuntime({
             };
       },
     });
+    if (collaborationRoles.length && [collaboration.executionModel, collaboration.reviewModel].some((key) => !subagentBindings.providers[key])) {
+      throw Object.assign(new Error("A collaboration model could not be resolved. Check its provider credentials and model configuration."), { errorCode: "MODEL_NOT_CONFIGURED" });
+    }
     // Delegation model catalog: every model binding flagged
     // `availableForSubagents` is pre-resolved so the system prompt can list
     // them and the parent agent can pass them to `Task.model` without an
@@ -676,9 +697,6 @@ export function createSessionLaunchRuntime({
             : [],
         ),
     );
-    const mode = normalizeMode(
-      overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
-    );
     let jevApiKey: string | undefined;
     if (mode === "agent" && settings.jevEnabled === true) {
       try {
@@ -706,6 +724,7 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        collaboration,
         ...(jevApiKey ? { jevApiKey } : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),

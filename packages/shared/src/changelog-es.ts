@@ -5,6 +5,8 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Flujos de desarrollo guardados con planificación, modelos para frontend y backend, revisión independiente, pruebas y correcciones limitadas.",
+      "Activa la colaboración automática entre modelos desde el editor, con proveedores fijos para ejecución y revisión y subagentes en la misma conversación.",
       "Los plugins instalados aparecen como tarjetas en una cuadrícula autoajustable, cada una con una acción clara y su estado de confianza, actualización y alcance a la vista.",
       "Lee valoraciones y reseñas públicas de los plugins del mercado y abre el centro de plugins para escribir una: la aplicación de escritorio nunca inicia sesión.",
       "Los comandos Bash largos continúan como tareas en segundo plano cuando termina el turno, y puedes consultar su salida después.",

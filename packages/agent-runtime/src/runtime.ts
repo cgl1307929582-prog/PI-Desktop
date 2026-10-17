@@ -1,3 +1,6 @@
+import { collaborationSettings, collaborationPrompt, hasCollaborationWorkflow, COLLABORATION_ANALYST, COLLABORATION_EXECUTOR, COLLABORATION_VERIFIER, COLLABORATION_ROLE_NAMES, type CollaborationSettings } from "@pi-desktop/shared";
+import { CollaborationReview } from "./collaboration-review.js";
+import { CollaborationWorkflowRunner, assertWorkflowWritePath, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult, type WorkflowResult } from "./collaboration-workflow.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -1037,6 +1040,7 @@ export type AgentRuntimeOptions = {
   subagentProviders?: Record<string, RuntimeProviderConfig>;
   /** Resolved keys explicitly opted into Task.model selection; pins alone grant no override. */
   subagentModelKeys?: string[];
+  collaboration?: CollaborationSettings;
 };
 
 export type AgentRuntimeDiagnostic = {
@@ -1067,6 +1071,7 @@ export type RuntimeMatchConfig = {
   subagentProviders?: Record<string, RuntimeProviderConfig>;
   /** Resolved keys explicitly opted into Task.model selection; pins alone grant no override. */
   subagentModelKeys?: string[];
+  collaboration?: CollaborationSettings;
 };
 
 /** Tool calls ride in the assistant content array as `type: "toolCall"`. A
@@ -1808,6 +1813,13 @@ export class DesktopAgentRuntime {
   private extensionProviderHeaders?: Record<string, string>;
   /** Subagent definitions offered through the `Task` tool (ADR 0062). */
   private subagents: SubagentDefinition[];
+  private collaboration: CollaborationSettings;
+  private collaborationReview = new CollaborationReview();
+  private collaborationRequest = "";
+  private workflowResult?: WorkflowResult;
+  private workflowRunning = false;
+  private workflowTasks = new Map<string, WorkflowJob>();
+  private workflowDelegates = new Map<string, { job: WorkflowJob; commands: WorkflowCommand[]; readCalls: number }>();
   private subagentProviders: Record<string, RuntimeProviderConfig>;
   private subagentModelKeys: Set<string>;
   /** On-demand Task.model grants; never mixed into launch opt-in matching. */
@@ -1965,6 +1977,7 @@ export class DesktopAgentRuntime {
   private mutationRecoveryGraces = new Set<string>();
   /** Tool-call ownership keeps concurrent delegates' mutation budgets apart. */
   private mutationOwners = new Map<string, string>();
+  private pendingDelegationStarts = 0;
   /** Why the recovery guard ended the turn, pending its visible error row. */
   private pendingMutationTermination?: {
     kind: "edit" | "patch-command";
@@ -2035,6 +2048,7 @@ export class DesktopAgentRuntime {
     this.pluginSkills = [...(opts.pluginSkills ?? [])].sort((left, right) => left.id.localeCompare(right.id));
     this.trustedExtensionSpecs = opts.trustedExtensions ?? [];
     this.subagents = opts.subagents ?? [];
+    this.collaboration = collaborationSettings(opts.collaboration);
     this.subagentProviders = opts.subagentProviders ?? {};
     this.subagentModelKeys = new Set(opts.subagentModelKeys ?? []);
     this.subagentOverrideProviders = {};
@@ -2455,6 +2469,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ...(projectPrompt ? [projectPrompt] : []),
         ...(memoryPrompt ? [memoryPrompt] : []),
         ...(resumablePrompt ? [resumablePrompt] : []),
+        ...(this.collaborationEnabled() ? [collaborationPrompt(this.collaboration)] : []),
       ].join("\n\n")),
     };
     const composed = Object.values(this.composedSections).filter(Boolean).join("\n\n");
@@ -2708,6 +2723,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       !this.disposed &&
       providerMatches &&
       this.mode === config.mode &&
+      safeJson(this.collaboration) === safeJson(collaborationSettings(config.collaboration)) &&
       this.jevApiKey === config.jevApiKey &&
       this.thinkingLevel ===
         clampThinkingLevel(config.provider, config.thinkingLevel) &&
@@ -3412,6 +3428,18 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         signal,
         onUpdate,
       ) => {
+        if (this.collaborationEnabled() && ["Write", "Edit", "Bash"].includes(toolName)) {
+          if (!this.mutationOwners.has(toolCallId)) {
+            const next = this.collaborationWorkflowEnabled()
+              ? "use CollaborationWorkflow with the complete task"
+              : `use Task with ${COLLABORATION_EXECUTOR} for implementation, or collaboration-verifier for tests`;
+            throw new Error(`Automatic collaboration requires delegation: ${next}. Use Read/Glob/Grep for parent inspection. The parent cannot execute ${toolName} in this mode.`);
+          }
+          if (toolName === "Bash" && isRecord(params) && params.runInBackground === true) {
+            throw new Error("Background commands cannot be reviewed before completion. Run this command in the foreground in collaboration mode.");
+          }
+          if (!this.collaborationWorkflowEnabled()) this.collaborationReview.noteTool(toolName, params);
+        }
         const mutationPath = PATH_MUTATING_TOOLS.has(toolName) && isRecord(params) && typeof params.path === "string"
           ? this.remoteWorkspace
             ? remoteMutationIdentity(this.remoteWorkspace, params.path)
@@ -3576,6 +3604,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (abortError) throw abortError;
         if (executionFailed) throw executionError;
         if (!result) throw new Error("tool execution returned no result");
+        const workflowDelegate = this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "");
+        if (toolName === "Read" && workflowDelegate && result.ok && !result.isError && !result.denied) workflowDelegate.readCalls += 1;
+        if (toolName === "Bash" && workflowDelegate && workflowDelegate.commands.length < 64) {
+          workflowDelegate.commands.push({
+            command: isRecord(params) && typeof params.command === "string" ? params.command.slice(0, 3000) : "",
+            exitCode: isRecord(result.content) && typeof result.content.exitCode === "number" ? result.content.exitCode : null,
+            ok: result.ok && !result.isError && !result.denied,
+          });
+        } else if (toolName === "Bash" && workflowDelegate?.commands.length === 64) {
+          workflowDelegate.commands.push({ command: "Command evidence limit exceeded; verification is inconclusive.", exitCode: null, ok: false });
+        }
         const recordParams = isRecord(params) ? params : undefined;
         const failedToolExecution = !result.ok && result.denied !== true;
         const failedEditPath =
@@ -3952,6 +3991,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       ...skillTools,
       ...modeTools,
       ...subagentTools,
+      ...(this.collaborationWorkflowEnabled() && this.subagents.length ? [this.buildCollaborationWorkflowTool()] : []),
       ...contextTools,
       ...extensionTools,
     ];
@@ -4065,6 +4105,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name === SUBAGENT_WAIT_TOOL_NAME ||
       name === SUBAGENT_LIST_TOOL_NAME ||
       name === SUBAGENT_STOP_TOOL_NAME ||
+      name === "CollaborationWorkflow" ||
       (this.mode === "agent"
         ? AGENT_CORE_TOOL_NAMES.has(name)
         : proposalKindForMode(this.mode)
@@ -4608,9 +4649,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name: SUBAGENT_TOOL_NAME,
       label: "Task",
       description: [
+        ...(this.collaborationWorkflowEnabled() ? [
+          "A structured collaboration workflow is selected. Use CollaborationWorkflow to plan and execute the entire task. Direct Task launches are disabled; the workflow owns stages, file scope and acceptance.",
+        ] : this.collaborationEnabled() ? [
+          `Automatic collaboration is enabled. Delegate implementation and repairs to ${COLLABORATION_EXECUTOR}, independent analysis to ${COLLABORATION_ANALYST}, and test execution to ${COLLABORATION_VERIFIER}. Even small edits use the execution role. Simple questions can be answered directly.`,
+          "Use the configured role models without overrides. Start independent tasks together; give each writer a separate file scope. A subagent cannot ask the user questions on your behalf.",
+        ] : [
         "Start one subagent in the background and return immediately; you keep working while it runs, then converge with TaskWait when you need its report.\n\nPrefer doing the work yourself. Only delegate when it saves significant context or enables genuine parallelism — not for tasks you can finish in a few tool calls.",
         "Use it only when the work is genuinely separable and substantial: parallel exploration of independent directions that each need many tool calls (one Task per direction in the same assistant message), a large multi-file implementation with a complete spec (fixer), an adversarial read-only review of a non-trivial change you already finished (code-reviewer), or a wide search whose raw output would fill this context (explorer, test-runner). A single file lookup or a small edit does not warrant delegation.",
         "Do not delegate what you can finish in a couple of tool calls, and do not delegate anything that needs the user — a subagent cannot ask a question or propose a plan on your behalf.",
+        ]),
         ...(this.availableSubagentModelKeys().length
           ? [
               "Only pass `model` when deliberately overriding the definition default with a listed delegation model; otherwise omit it. Repeating the definition's own Default model key, or the exact parent provider/model, is the same as omitting `model`.",
@@ -4654,6 +4702,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // here so the intent survives a tool built outside that path.
       executionMode: "parallel",
       execute: async (toolCallId, params) => {
+        if (this.collaborationWorkflowEnabled() && !this.workflowTasks.has(toolCallId)) {
+          return this.subagentToolError(toolCallId, "Use CollaborationWorkflow for this task. The selected workflow owns planning, implementation, review and tests.");
+        }
         const requested = isRecord(params) ? String(params.agent ?? "") : "";
         const definition = this.subagents.find(
           (candidate) => candidate.name === normalizeSubagentName(requested),
@@ -4677,6 +4728,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           isRecord(params) && typeof params.model === "string"
             ? params.model.trim()
             : "";
+        if (this.collaborationEnabled() && COLLABORATION_ROLE_NAMES.includes(definition.name) && modelOverride && modelOverride !== `${definition.model?.providerId}/${definition.model?.modelId}`) {
+          return this.subagentToolError(toolCallId, "Collaboration roles must use their configured model. Change the collaboration model selection before starting a new turn.");
+        }
         // Resume keeps the chain's model; a new delegation is the way to switch.
         if (resume && modelOverride) {
           return this.subagentToolError(
@@ -4773,13 +4827,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const current = this.resolveResumeChain(resume, definition.name);
           if (!current.ok) return this.subagentToolError(toolCallId, current.message);
         }
-        if (this.runningDelegations().length >= MAX_SUBAGENT_CONCURRENCY) {
+        const concurrencyLimit = this.collaborationEnabled() ? this.collaboration.maxConcurrency : MAX_SUBAGENT_CONCURRENCY;
+        if (this.runningDelegations().length + this.pendingDelegationStarts >= concurrencyLimit) {
           return this.subagentToolError(
             toolCallId,
-            `${MAX_SUBAGENT_CONCURRENCY} subagents are already running for this session. Wait for some with TaskWait or stop them with TaskStop before delegating more.`,
+            `${concurrencyLimit} subagents are already running for this session. Wait for some with TaskWait or stop them with TaskStop before delegating more.`,
           );
         }
         if (resumedProvider) provider = resumedProvider;
+        if (this.collaborationEnabled() && COLLABORATION_ROLE_NAMES.includes(definition.name) &&
+          (`${provider.id}/${provider.modelId}` !== `${definition.model?.providerId}/${definition.model?.modelId}` ||
+            (resumedChain && resumedChain.latestModelKey !== `${definition.model?.providerId}/${definition.model?.modelId}`))) {
+          return this.subagentToolError(toolCallId, "This collaboration chain used a different model. Start a new delegation on the currently configured model.");
+        }
         const modelChangedFrom =
           resumedChain?.latestModelId && !resumedProvider
             ? resumedChain.latestModelId
@@ -4807,6 +4867,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ? resumedChain?.delegateSessionId ?? delegationId
           : undefined;
         if (worktreeKey) {
+          // Reserve before yielding: parallel Task calls also count worktrees
+          // that are still being prepared toward the session concurrency cap.
+          this.pendingDelegationStarts += 1;
           try {
             await this.host.call("worktree.delegate.create", {
               sessionId: this.sessionId,
@@ -4819,6 +4882,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 error instanceof Error ? error.message : String(error)
               }. No work was started.`,
             );
+          } finally {
+            this.pendingDelegationStarts -= 1;
           }
           if (this.disposed || this.runCancelled || this.turnHadError || resumeEpoch !== this.turnEpoch) {
             void this.settleDelegateWorktree(worktreeKey, false, delegationId);
@@ -4882,6 +4947,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
         this.delegations.set(delegationId, record);
+        const workflowJob = this.workflowTasks.get(toolCallId);
+        if (workflowJob) this.workflowDelegates.set(delegationId, { job: workflowJob, commands: [], readCalls: 0 });
         let subagentRun: SubagentRun;
         try {
           const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, worktreeKey);
@@ -5013,6 +5080,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return tools.map((tool) => ({
       ...tool,
       execute: async (toolCallId, args, signal, onUpdate) => {
+        const workflowJob = this.workflowDelegates.get(mutationOwner)?.job;
+        if (workflowJob?.files && ["Write", "Edit"].includes(tool.name)) {
+          assertWorkflowWritePath(workflowJob.files, isRecord(args) ? args.path ?? args.file_path : undefined,
+            this.workspaceRoot ?? this.projectPath ?? this.scratchDir ?? ".");
+        }
         this.mutationOwners.set(toolCallId, mutationOwner);
         if (scope !== DEFAULT_SUBAGENT_PERMISSION) {
           this.delegatePermissionScopes.set(toolCallId, scope);
@@ -5218,7 +5290,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private keepTurnOpenForDelegates(): boolean {
     return (
       (this.runningDelegations().length > 0 ||
-        this.pendingCurrentTurnDelegations().length > 0) &&
+        this.pendingCurrentTurnDelegations().length > 0 ||
+        (this.collaborationEnabled() && this.collaborationReview.pending)) &&
       !this.runCancelled &&
       !this.turnHadError
     );
@@ -5382,6 +5455,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * aborts leftover delegates and returns without a resume prompt (D352).
    */
   private async resumeAfterDelegations(): Promise<void> {
+    if (this.workflowResult && this.workflowResult.status !== "completed" && !this.runCancelled && !this.turnHadError) {
+      this.terminateParentTurn();
+      this.emit({ type: "error", error: { code: "COLLABORATION_WORKFLOW_FAILED", message: this.workflowResult.error ?? "The workflow did not complete.", retriable: true } });
+      this.emit({ type: "turn_end" });
+      this.emit({ type: "agent_end", messageIds: [] });
+      return;
+    }
+    if (this.collaborationEnabled() && this.collaborationReview.pending && !this.runCancelled && !this.turnHadError && !this.runningDelegations().length) {
+      this.terminateParentTurn();
+      this.emit({ type: "error", error: { code: "COLLABORATION_REVIEW_FAILED", message: this.collaborationReview.report || "The latest work has not passed independent review.", retriable: true } });
+      this.emit({ type: "turn_end" });
+      this.emit({ type: "agent_end", messageIds: [] });
+      return;
+    }
     if (this.disposed || this.runCancelled || this.turnHadError) {
       if (this.turnHadError) this.terminateParentTurn();
       return;
@@ -5458,6 +5545,118 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         return;
       }
     }
+  }
+
+  private collaborationEnabled(): boolean {
+    return this.mode === "agent" && this.collaboration.mode !== "off";
+  }
+
+  private collaborationWorkflowEnabled(): boolean {
+    return this.mode === "agent" && hasCollaborationWorkflow(this.collaboration);
+  }
+
+  private buildCollaborationWorkflowTool(): AgentTool {
+    return {
+      name: "CollaborationWorkflow",
+      label: "Collaboration workflow",
+      description: `Run the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use once for the complete task. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
+      parameters: Type.Object({
+        task: Type.String({ minLength: 1, maxLength: 16000, description: "Complete task, constraints, agreed API behavior and acceptance criteria." }),
+        readOnly: Type.Optional(Type.Boolean({ description: "Analyze, plan or review without implementation or shell commands." })),
+      }),
+      execute: async (_toolCallId, params, signal, onUpdate) => {
+        if (this.workflowRunning) throw new Error("A collaboration workflow is already running.");
+        if (!isRecord(params) || typeof params.task !== "string" || !params.task.trim()) throw new Error("A workflow task is required.");
+        if (!this.workflowResult) {
+          this.workflowRunning = true;
+          try {
+            const runner = new CollaborationWorkflowRunner(this.collaboration,
+              (job, abortSignal) => this.runCollaborationTask(job, abortSignal),
+              (result) => {
+                this.workflowResult = result;
+                onUpdate?.({
+                  content: [{ type: "text", text: result.stages.map(stage => `${stage.status}: ${stage.phase}`).join("\n") }],
+                  details: { workflow: { ...result, plan: undefined,
+                    stages: result.stages.map(stage => ({ id: stage.id, phase: stage.phase, agent: stage.agent, status: stage.status })) } },
+                });
+              });
+            this.workflowResult = await runner.run(
+              `${this.collaborationRequest.slice(0, 12000)}\n\nTask brief: ${params.task}`,
+              params.readOnly === true, signal);
+          } finally { this.workflowRunning = false; }
+        }
+        const result = this.workflowResult;
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          details: { workflow: result },
+          isError: result.status !== "completed",
+        };
+      },
+    };
+  }
+
+  /** Reuse native Task events, provider routing, permission scopes and settlement. */
+  private async runCollaborationTask(job: WorkflowJob, signal?: AbortSignal): Promise<WorkflowDelegateResult> {
+    if (this.runCancelled || this.disposed || this.turnHadError || signal?.aborted) throw new Error("Workflow was cancelled.");
+    const tool = this.toolCatalog.get(SUBAGENT_TOOL_NAME);
+    if (!tool) throw new Error("Native Task is unavailable.");
+    const toolCallId = randomUUID();
+    const startedAt = Date.now();
+    const args = { agent: job.agent, task: job.task, description: job.phase };
+    this.workflowTasks.set(toolCallId, job);
+    let record: DelegationRecord | undefined;
+    try {
+      this.emit({ type: "tool_start", toolCallId, toolName: SUBAGENT_TOOL_NAME, args });
+      const result = await tool.execute(toolCallId, args, signal);
+      this.emit({ type: "tool_end", toolCallId, result });
+      const details = isRecord(result.details) ? result.details : undefined;
+      record = typeof details?.delegationId === "string" ? this.delegations.get(details.delegationId) : undefined;
+      if (!record) throw new Error(`Native ${job.phase} task could not start: ${JSON.stringify(result).slice(0, 2000)}`);
+      record.taskMessage = taskMessageSnapshot({ toolCallId, toolName: SUBAGENT_TOOL_NAME, args, startedAt, endedAt: Date.now(), result });
+      this.publishDelegationSettlement(record);
+      this.beginDelegationWait(this.runningDelegations());
+      await this.waitForDelegations([record], 1, null, signal);
+      if (this.runCancelled || this.disposed || this.turnHadError || signal?.aborted) {
+        record.abort();
+        throw new Error("Workflow was cancelled.");
+      }
+      record.reportDelivered = true;
+      const settled = record.result;
+      return {
+        status: settled?.status ?? "failed", report: settled?.report ?? "No report returned.",
+        toolCalls: settled?.toolCalls ?? 0,
+        readCalls: this.workflowDelegates.get(record.delegationId)?.readCalls ?? 0,
+        commands: this.workflowDelegates.get(record.delegationId)?.commands ?? [],
+      };
+    } finally {
+      this.workflowTasks.delete(toolCallId);
+      if (record) {
+        record.reportDelivered = true;
+        this.workflowDelegates.delete(record.delegationId);
+      }
+      const remaining = this.runningDelegations();
+      if (remaining.length) this.beginDelegationWait(remaining);
+      else this.endDelegationWait();
+    }
+  }
+
+  /** Review only after all potential writers settle, before another parent response. */
+  private async reviewCollaborationWork(signal?: AbortSignal): Promise<void> {
+    if (!this.collaborationEnabled() || this.collaborationWorkflowEnabled() || this.runCancelled || this.disposed) return;
+    const running = this.runningDelegations();
+    if (running.length) {
+      this.beginDelegationWait(running);
+      try { await this.waitForDelegations(running, running.length, null, signal); }
+      finally { this.endDelegationWait(); }
+    }
+    if (signal?.aborted || this.runCancelled || this.disposed || this.turnHadError) return;
+    if (!this.collaborationReview.needsReview) return;
+    const review = this.collaborationReview.begin(this.projectPath ?? ".", this.collaborationRequest);
+    const result = await this.runCollaborationTask({
+      id: "automatic-review", phase: "Independent review", agent: COLLABORATION_ANALYST, task: review.task,
+    }, signal);
+    if (signal?.aborted || this.runCancelled || this.disposed) return;
+    this.collaborationReview.finish(review.revision, result);
   }
 
   /** `TaskWait`: converge on running delegations (ADR 0089). */
@@ -6846,7 +7045,22 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
   ): Promise<AgentLoopTurnUpdate> {
-    return this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
+    await this.reviewCollaborationWork(signal);
+    const update = await this.extensionContext(await this.prepareNextTurnWithoutExtensions(turn, signal));
+    if (this.collaborationEnabled() && this.collaborationReview.report && update.context) {
+      const settled = this.pendingCurrentTurnDelegations().filter((record) => record.status !== "running");
+      const reports = formatDelegationResults(settled.map((record) => ({
+        delegationId: record.delegationId, agent: record.agentName, status: record.status,
+        report: record.result?.report ?? `(${record.status} without a report)`,
+      })));
+      for (const record of settled) {
+        if (reports.includedDelegationIds.has(record.delegationId)) record.reportDelivered = true;
+      }
+      return { ...update, context: { ...update.context, messages: [...update.context.messages, {
+        role: "system", content: reports.text + "\n\n" + this.collaborationReview.report + (this.collaborationReview.pending ? "\nDelegate a repair, then the runtime will review the latest work again. Do not declare success." : "\nReport this source review separately from executed tests."), timestamp: Date.now(),
+      }] } };
+    }
+    return update;
   }
 
   private async prepareNextTurnWithoutExtensions(
@@ -8811,6 +9025,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     userMessageId: string | undefined,
     durableTurnId: string,
   ): Promise<{ turnId: string }> {
+    this.collaborationReview = new CollaborationReview();
+    this.workflowResult = undefined;
+    this.workflowTasks.clear();
+    this.workflowDelegates.clear();
+    this.collaborationRequest = typeof input === "string" ? input : input.text;
     const selectedTools = this.selectedMcpTools(input);
     const modelInput = typeof input !== "string" && input.sessionMessage
       ? { ...input, text: formatSessionMessage(input.text, input.sessionMessage), sessionMessage: undefined }

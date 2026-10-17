@@ -1,6 +1,7 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const zhTW = {
+  collaboration: en.collaboration,
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "新增隔離工作階段",

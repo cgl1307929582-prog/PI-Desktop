@@ -1,6 +1,24 @@
 import { en, type EnglishCatalog } from "../en/index.js";
 
 export const zhCN = {
+  collaboration: {
+    title: "多模型协作", trigger: "协作：{{mode}}", mode: "协作模式",
+    off: "关闭", auto: "自动", deep: "深度",
+    description: {
+      off: "使用主模型的常规工作流程。",
+      auto: "自动委派实现，并独立审查最新改动。简单问答由主模型直接回答。",
+      deep: "按依赖拆分复杂任务，安排执行模型实现，更多使用审查模型进行分析和验证。",
+    },
+    executionModel: "主开发模型", reviewModel: "协作模型", concurrency: "子代理并发上限",
+    workflow: "工作流", codingMode: "代码分工",
+    workflows: { adaptive: "灵活协作", quick: "快速修复", standard: "标准开发", deep: "深度开发", review: "只读审查" },
+    codingModes: { primary: "主模型负责开发", split: "主模型前端 · 协作模型后端" },
+    workflowHint: "分工模式下，主开发模型负责前端及按文件分配的协助，协作模型也可开发后端。规划、审查和测试由新的协作模型子代理执行；按文件归属和依赖安排并行。",
+    chooseModel: "选择模型", unavailableModel: "不可用：{{model}}",
+    modelHint: "请选择两个不同的模型，并先在模型设置中允许子代理使用。模型旁的服务名用于区分渠道。",
+    scope: "保存为本机智能体模式的偏好，在新启动的回合生效。操作权限保持原设置；最多审查三次，未通过时无法成功完成。",
+    save: "保存协作设置",
+  },
   worktree: {
     menu: { group: "Git" },
     newIsolatedSession: "新建隔离会话",

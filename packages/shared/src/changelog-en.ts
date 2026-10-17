@@ -5,6 +5,8 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Choose saved development workflows with planning, frontend/backend model assignments, independent review, executed tests and bounded repair.",
+      "Choose automatic multi-model collaboration from the composer, with pinned execution/review channels and native children in the same conversation.",
       "Browse installed plugins as cards in an auto-filling grid, each with one clear action and its trust, update, and scope state at a glance.",
       "Read public ratings and reviews for marketplace plugins, and open the plugin center to write one — the desktop never signs in.",
       "Keep long-running Bash commands going after a turn ends, then review their output as background tasks.",

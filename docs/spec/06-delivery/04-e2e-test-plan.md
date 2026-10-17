@@ -10094,6 +10094,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / E / Quality — Composer native collaboration | E2E-CHAT-composer-native-collaboration; E2E-CHAT-collaboration-workflow |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
@@ -18159,3 +18160,29 @@ host-created files. The full app's file-preview viewer is covered separately.
   the theme-token and reduced-motion guarantees; the interactive sidebar
   scenario remains a manual validation scenario run in a capable
   environment.
+
+
+#### E2E-CHAT-composer-native-collaboration
+
+- **Preconditions:** Candidate build, temporary profile/workspace, two opted-in provider models; local HTTP fixtures for deterministic checks.
+- **Steps:** Open the composer collaboration control; choose Auto, execution and pro review pins, concurrency 8; save; remount. Switch to Deep and 10; refuse identical pins; fail a save; then turn Off. Start an ordinary coding prompt with the saved mode, implement, review, repair a failed review and review again. Stop during review. Fan out nine Tasks with an eight-slot cap while worktrees are preparing.
+- **Expected:** Mode and channels persist; permissions do not change; failed save retains the previous value. Native children stay attached to the parent. Review reads the latest files before completion; a failure cannot be claimed as completion; Stop cancels; at most eight delegates start. Off and simple questions preserve direct operation.
+- **Specs:** [Runtime](../03-runtime/02-agent-runtime.md), [composer settings](../04-ux/06-settings-ia.md), [ADR](../../adr/composer-native-collaboration.md).
+- **Acceptance:** All assertions pass; live channel checks are separate from deterministic fixture evidence.
+- **Milestone:** Fork feature.
+- **Status:** Automated by `apps/desktop/test/collaboration-composer-user-path.test.mjs`, `packages/agent-runtime/src/collaboration-runtime.test.ts`, both launch-resolver tests, and the host settings RPC round-trip test.
+
+| Scenario | Runtime | UI | Host persistence | Automation |
+| --- | --- | --- | --- | --- |
+| E2E-CHAT-composer-native-collaboration | Native Task and review gate | Composer picker | Optional collaboration setting | Tests listed above |
+
+
+#### E2E-CHAT-collaboration-workflow
+
+- **Preconditions:** Candidate build and isolated profile with two enabled delegation models.
+- **Steps:** Select Standard development and split coding in the composer; save and reopen. Run an ordinary frontend/backend request. Observe GPT planning, primary frontend, collaboration-model backend and fresh review/test children. Exercise dependency-ordered assistance, failure/repair, a claimed test pass without Bash, overlapping writers, read-only analysis and Stop during planning.
+- **Expected:** Workflow and assignment persist with exact provider pins. All children belong to the original conversation. Coding obeys dependencies and file ownership; tests require successful observed command results. Failed or canceled workflows do not claim delivery or start later stages. No new sidebar sessions appear.
+- **Specs:** [Runtime](../03-runtime/02-agent-runtime.md), [composer settings](../04-ux/06-settings-ia.md), [ADR](../../adr/composer-native-collaboration.md).
+- **Acceptance:** Deterministic tests pass. Real-provider evidence records actual model assignments, stage results, peak concurrency and sidebar count separately.
+- **Milestone:** Fork feature.
+- **Status:** Automated by `collaboration-workflow.test.ts`, `collaboration-runtime.test.ts`, `collaboration-composer-user-path.test.mjs`, shared/Rust settings validation; live provider acceptance is separate.

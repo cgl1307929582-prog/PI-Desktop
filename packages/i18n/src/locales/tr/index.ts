@@ -2815,6 +2815,11 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     phase: { idle: "Kapalı", preparing: "Hazırlanıyor", "acquiring-mic": "Mikrofon bekleniyor", negotiating: "Anlaşılıyor", connecting: "Bağlanıyor…", connected: "Bağlandı", reconnecting: "Yeniden bağlanıyor", closing: "Sonlandırılıyor…", ended: "Sonlandı", failed: "Durduruldu" },
   },
   errors: {
+    COLLABORATION_PLAN_FAILED: "İş birliği planı düzeltilmeli. Devam etmeden önce ayrıntıları açın.",
+    COLLABORATION_VERIFICATION_BLOCKED: "Doğrulama tamamlanmadı. Ayrıntılardaki ön koşulu çözün ve devam edin.",
+    COLLABORATION_CHECKS_FAILED: "Sınırlı düzeltme denemelerinden sonra inceleme veya testler başarısız. Ayrıntıları açın.",
+    COLLABORATION_WORKFLOW_FAILED: "İş birliği akışı durdu. İlgili aşama için ayrıntıları açın.",
+    COLLABORATION_REVIEW_FAILED: "Son değişiklikler bağımsız incelemeyi henüz geçmedi.",
     COMPOSER_MCP_UNAVAILABLE: "Seçilen MCP sunucusunun bağlantısı kesildi veya bu projede kullanılamıyor. Yeniden bağlanıp tekrar seçin.",
     COMPOSER_MCP_REQUEST_REQUIRED: "Bir MCP sunucusu veya aracı seçtikten sonra görev metni girin ya da bir ek ekleyin.",
     HOST_UNAVAILABLE: "Yerel servis kullanılamıyor",

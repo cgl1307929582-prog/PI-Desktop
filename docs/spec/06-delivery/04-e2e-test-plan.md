@@ -18221,3 +18221,27 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Steps:** Save Automatic workflow/assignment in one conversation and lock Deep in another. Switch, restart, fork, and delete; keep global preferences and transcript content unchanged. Refuse saves during a running turn, pending approval and queued/running plan execution. Save a draft without creating a session or changing reasoning. Retry a failed fetch; ignore a response from the previous conversation.
 - **Runtime:** In consecutive turns select Quick, Standard and read-only Review with reasons; return to solo work. Reject missing auto decisions and conflicting manual overrides before children start. Assign either developer to either frontend/backend task, retaining pinned review/test contexts and exact file/dependency guards. Provider-only plugin/voice completions bypass session lookup.
 - **Coverage:** `scripts/e2e-session-workflow.mjs` exercises a real host and restart; composer, launch-resolver, routing and runtime tests cover their boundaries. Real Claude/pro GPT calls are recorded separately from HTTP fixtures, including assignments, test commands and unchanged sidebar session count.
+
+
+#### E2E-CHAT-workflow-recovery
+
+- **Steps:** Reject a Deep plan for a missing requirement, revise and re-review before
+  coding; exhaust two revisions without starting writers. Verify already implemented
+  work with an empty task list. Return an inconclusive historical-baseline review,
+  then a fresh evidence-backed verdict. Keep a genuinely required source blocker.
+- **Evidence:** Exercise real host `TOOL_FAILED` exits, unavailable-launcher recovery,
+  failed tests followed by unrelated success, different required Python versions,
+  narrower selectors, denied tools and truncated command strings. Only valid complete
+  evidence can pass; preserve every failed attempt.
+- **Recovery:** Repeat an ordinary workflow call, then explicitly retry verification.
+  Assert fresh native children, the original scope/model pins/preset, no additional
+  writers, no second retry and no retry after a failed repair plan/worker.
+- **Scheduling:** Hold an independent writer while a dependency finishes; its dependent
+  must use the free slot immediately. Fail a writer or Stop during tool execution or
+  worktree preparation; drain every child and host abort acknowledgement before ending.
+- **UI:** Check the localized error summary for a missing prerequisite and a genuine
+  failed test. Existing session settings, provider bindings and transcript history survive
+  installation. Live-provider checks use a separate profile/project.
+- **Automation:** `collaboration-workflow.test.ts`, `collaboration-workflow-turn.test.ts`,
+  `collaboration-runtime.test.ts`, i18n user-facing-copy tests. Packaged live-model and
+  installed preservation evidence is recorded separately from deterministic fixtures.

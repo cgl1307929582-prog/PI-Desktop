@@ -20,7 +20,7 @@ const pass = '{"verdict":"pass","summary":"Read app.txt:1; it contains the reque
 const fail = '{"verdict":"fail","summary":"app.txt:1 still contains the old behavior; repair it."}';
 
 async function fixture(replies: Record<string, Reply[]> | ((request: Request) => Reply), collaboration = settings, beforeReview?: () => Promise<void>, isolated = false,
-  bashResult = { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" }) {
+  bashResult = { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" }, beforeHost?: (method: string, input: unknown) => Promise<void>) {
   const workspace = await mkdtemp(join(tmpdir(), "pi-collaboration-"));
   await writeFile(join(workspace, "app.txt"), "old");
   const requests: Request[] = [];
@@ -55,6 +55,7 @@ async function fixture(replies: Record<string, Reply[]> | ((request: Request) =>
     subagentProviders: { "claude/implement": provider("claude", "implement"), "pro/review": provider("pro", "review") },
     onEvent: (event) => events.push(event),
     host: { call: async <T>(method: string, input?: unknown): Promise<T> => {
+      await beforeHost?.(method, input);
       if (method === "project.instructions.resolve") return undefined as T;
       if (method === "worktree.delegate.settle") return { settlement: { result: "noChanges" } } as T;
       if (method === "tools.execute") {
@@ -63,7 +64,8 @@ async function fixture(replies: Record<string, Reply[]> | ((request: Request) =>
         if (call.toolName === "Write") await writeFile(join(workspace, call.args.path), call.args.content ?? "");
         const content = call.toolName === "Read" ? await readFile(join(workspace, call.args.path), "utf8")
           : call.toolName === "Bash" ? bashResult : "success";
-        return { ok: true, content } as T;
+        return { ok: call.toolName !== "Bash" || bashResult.exitCode === 0,
+          ...(call.toolName === "Bash" && bashResult.exitCode !== 0 ? { isError: true, errorCode: "TOOL_FAILED" } : {}), content } as T;
       }
       return {} as T;
     } },
@@ -273,7 +275,7 @@ it("workflow stops after bounded invalid-plan corrections without giving any chi
   await f.runtime.prompt("Fix both files.");
   expect(await readFile(join(f.workspace, "app.txt"), "utf8")).toBe("old");
   expect(f.executed).toEqual(["Read", "Read", "Read"]);
-  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED")).toBe(true);
+  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_PLAN_FAILED")).toBe(true);
   expect(JSON.stringify(f.events)).toContain("Planning remained invalid after two corrections");
 }, 20_000);
 
@@ -292,7 +294,7 @@ it("workflow rejects a test pass claimed without any shell execution", async () 
   const f = await fixture(request => workflowReply(request, { fakeTests: true }), workflowSettings);
   await f.runtime.prompt("Fix and test the project.");
   expect(f.executed).not.toContain("Bash");
-  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED")).toBe(true);
+  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_VERIFICATION_BLOCKED")).toBe(true);
 }, 20_000);
 
 it("workflow preserves a missing-dependency blocker and command evidence without repeating native writers", async () => {
@@ -306,7 +308,7 @@ it("workflow preserves a missing-dependency blocker and command evidence without
   await f.runtime.prompt("Fix and test the project.");
   expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
   expect(f.requests.some(request => JSON.stringify(request.messages).includes("Repair only these failures"))).toBe(false);
-  const failure = f.events.find(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED");
+  const failure = f.events.find(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_VERIFICATION_BLOCKED");
   expect(JSON.stringify(failure)).toContain("Verification is blocked");
   expect(JSON.stringify(failure)).toContain("requests is missing");
   expect(JSON.stringify(failure)).toContain("python3 -m unittest test_bridge.py");
@@ -318,7 +320,7 @@ it("workflow requires an observed source read even when a reviewer claims succes
   const f = await fixture(request => workflowReply(request, { fakeReview: true }), workflowSettings);
   await f.runtime.prompt("Fix and review the project.");
   expect(f.executed).toContain("Glob");
-  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_WORKFLOW_FAILED")).toBe(true);
+  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_VERIFICATION_BLOCKED")).toBe(true);
 }, 20_000);
 
 it("Stop during workflow planning prevents coding and parent continuation", async () => {
@@ -390,4 +392,88 @@ it("a manually locked workflow refuses a model override before running the selec
   expect(f.requests.some(request => JSON.stringify(request.messages).includes("check this plan against the task"))).toBe(false);
   expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
   expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+}, 20_000);
+
+
+it("retries failed native verification in the same turn without cached failure, extra writers or new sessions", async () => {
+  let reviews = 0;
+  const parent: Reply[] = [
+    [{ name: "CollaborationWorkflow", arguments: { task: "Fix both files and verify the full scope" } }],
+    [{ name: "CollaborationWorkflow", arguments: { task: "Repeated ordinary invocation" } }],
+    [{ name: "CollaborationWorkflow", arguments: { task: "Reverify", retry: "verify", retryReason: "Review requested an unrequired historical baseline; inspect current source against the original task" } }],
+    "Completed after fresh verification.",
+  ];
+  const f = await fixture(request => {
+    if (request.model === "parent") return parent.shift() ?? "Done.";
+    const context = JSON.stringify(request.messages);
+    if (context.includes("Your stage is source review only") && context.includes('"role":"tool"')) {
+      return ++reviews <= 2 ? '{"verdict":"inconclusive","summary":"No source defect; no historical dirty baseline."}' : pass;
+    }
+    return workflowReply(request);
+  }, workflowSettings);
+  await f.runtime.prompt("Fix both files and verify the original requirements.");
+  expect(reviews).toBe(3);
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(2);
+  expect(f.executed.filter(name => name === "Bash")).toHaveLength(2);
+  expect(f.events.filter(({ event }) => event.type === "error")).toEqual([]);
+  expect(f.events.filter(event => event.agentName).every(event => event.sessionId === "collaboration-fixture" && !!event.parentToolCallId)).toBe(true);
+  expect(JSON.stringify(f.requests.at(-1)?.messages)).toContain('verificationRetry');
+}, 20_000);
+
+it("Stop during native workflow tool execution waits for host abort acknowledgement before ending", async () => {
+  let started!: () => void, aborted!: () => void, release!: () => void;
+  const startedTool = new Promise<void>(resolve => { started = resolve; });
+  const abortRequested = new Promise<void>(resolve => { aborted = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const f = await fixture(request => {
+    if (JSON.stringify(request.messages).includes("Your assignment:")) {
+      return request.messages.some(value => !!value && typeof value === "object" && "role" in value && value.role === "tool")
+        ? "Stopped" : [{ name: "Bash", arguments: { command: "node --test" } }];
+    }
+    return workflowReply(request);
+  }, { ...workflowSettings, maxConcurrency: 1 }, undefined, false, undefined, async (method, input) => {
+    if (method === "tools.execute" && (input as { toolName?: string })?.toolName === "Bash") { started(); await held; }
+    if (method === "tools.abort") { aborted(); await held; }
+  });
+  let settled = false;
+  const prompt = f.runtime.prompt("Fix both files.").finally(() => { settled = true; });
+  await startedTool;
+  const stopping = f.runtime.abort();
+  await abortRequested;
+  expect(settled).toBe(false);
+  expect(f.requests.some(request => JSON.stringify(request.messages).includes("Your stage is source review only"))).toBe(false);
+  release();
+  await stopping;
+  await prompt;
+  expect(f.requests.filter(request => JSON.stringify(request.messages).includes("Your assignment:") && request.model === "review")).toHaveLength(0);
+  expect(f.requests.filter(request => request.model === "parent")).toHaveLength(1);
+}, 15_000);
+
+it("Stop during workflow worktree preparation never sends a late coding request", async () => {
+  let preparing!: () => void, release!: () => void;
+  const prepared = new Promise<void>(resolve => { preparing = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const f = await fixture(request => workflowReply(request), { ...workflowSettings, maxConcurrency: 1 }, undefined, true, undefined,
+    async method => { if (method === "worktree.delegate.create") { preparing(); await held; } });
+  const prompt = f.runtime.prompt("Implement both files in isolation.");
+  await prepared;
+  const stopping = f.runtime.abort();
+  release();
+  await stopping;
+  await prompt;
+  expect(f.requests.some(request => JSON.stringify(request.messages).includes("Your assignment:"))).toBe(false);
+  expect(f.executed).not.toContain("Write");
+}, 15_000);
+
+
+it("a real host TOOL_FAILED exit 1 triggers bounded code repair rather than an environment blocker", async () => {
+  const f = await fixture(request => {
+    const context = JSON.stringify(request.messages);
+    if (context.includes("Your stage is automated test execution") && context.includes('"role":"tool"')) return fail;
+    return workflowReply(request);
+  }, workflowSettings, undefined, false, { exitCode: 1, stdout: "", stderr: "AssertionError: expected fixed" });
+  await f.runtime.prompt("Fix both files and pass their tests.");
+  expect(f.executed.filter(name => name === "Write")).toHaveLength(6);
+  expect(f.executed.filter(name => name === "Bash")).toHaveLength(3);
+  expect(f.events.some(({ event }) => event.type === "error" && event.error.code === "COLLABORATION_CHECKS_FAILED")).toBe(true);
 }, 20_000);

@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Reintenta la verificación sin repetir cambios, revisa planes rechazados e inicia subtareas listas sin ocultar fallos reales de pruebas.",
       "Selecciona automáticamente el flujo y los modelos de desarrollo por tarea, con preferencias y bloqueo manual por conversación.",
       "El modelo principal decide cuándo colaborar: el modo inteligente resuelve cambios pequeños directamente y usa subagentes solo cuando aportan valor.",
       "Flujos de desarrollo guardados con planificación, modelos para frontend y backend, revisión independiente, pruebas y correcciones limitadas.",

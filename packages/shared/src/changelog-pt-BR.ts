@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Repita a verificação sem repetir edições, revise planos rejeitados e inicie subtarefas prontas sem ocultar falhas reais de testes.",
       "Selecione automaticamente o fluxo e os modelos de desenvolvimento por tarefa, com preferências e bloqueio manual por conversa.",
       "O modelo principal decide quando colaborar: o modo inteligente resolve pequenas alterações diretamente e inicia subagentes apenas quando são úteis.",
       "Fluxos de desenvolvimento salvos com planejamento, modelos para frontend e backend, revisão independente, testes e correções limitadas.",

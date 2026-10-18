@@ -9780,3 +9780,27 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **步骤：** 一个会话保存自动流程与分工，另一个锁定深度开发；切换、重启、分支和删除后各自正确保存，原全局配置与对话内容保留。运行中、待审批及计划执行排队或运行时拒绝更改。仅保存草稿不创建会话、不改变思考等级。加载失败可重试，切换后迟到的响应不能污染当前会话。
 - **运行时：** 连续不同轮自动选快速、标准和只读审查并记录原因，下一轮可恢复独立处理；缺少自动选择信息或试图覆盖手动锁定时不启动子代理。两种开发模型均可分配前后端任务，仍保留独立审查/测试与文件依赖限制。插件单次补全及语音分类跳过会话工作流读取。
 - **覆盖：** `scripts/e2e-session-workflow.mjs` 检查真实主机与重启；输入框、启动器、路由及运行时测试覆盖边界。实际 Claude/pro GPT 的分工、执行命令与侧栏会话数单独记录，模拟响应不算渠道实测。
+
+
+#### E2E-CHAT-workflow-recovery
+
+- **Steps:** Reject a Deep plan for a missing requirement, revise and re-review before
+  coding; exhaust two revisions without starting writers. Verify already implemented
+  work with an empty task list. Return an inconclusive historical-baseline review,
+  then a fresh evidence-backed verdict. Keep a genuinely required source blocker.
+- **Evidence:** Exercise real host `TOOL_FAILED` exits, unavailable-launcher recovery,
+  failed tests followed by unrelated success, different required Python versions,
+  narrower selectors, denied tools and truncated command strings. Only valid complete
+  evidence can pass; preserve every failed attempt.
+- **Recovery:** Repeat an ordinary workflow call, then explicitly retry verification.
+  Assert fresh native children, the original scope/model pins/preset, no additional
+  writers, no second retry and no retry after a failed repair plan/worker.
+- **Scheduling:** Hold an independent writer while a dependency finishes; its dependent
+  must use the free slot immediately. Fail a writer or Stop during tool execution or
+  worktree preparation; drain every child and host abort acknowledgement before ending.
+- **UI:** Check the localized error summary for a missing prerequisite and a genuine
+  failed test. Existing session settings, provider bindings and transcript history survive
+  installation. Live-provider checks use a separate profile/project.
+- **Automation:** `collaboration-workflow.test.ts`, `collaboration-workflow-turn.test.ts`,
+  `collaboration-runtime.test.ts`, i18n user-facing-copy tests. Packaged live-model and
+  installed preservation evidence is recorded separately from deterministic fixtures.

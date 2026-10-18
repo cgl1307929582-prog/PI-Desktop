@@ -11,7 +11,7 @@ const task = (id: string, role: WorkflowTask["role"] = "frontend", files = [id +
 const plan = (tasks: WorkflowTask[]) => JSON.stringify({ summary: "Agreed API", acceptance: ["Behavior works"], tasks });
 const result = (report: string, commands: WorkflowDelegateResult["commands"] = []): WorkflowDelegateResult =>
   ({ status: "completed", report, commands, toolCalls: 1, readCalls: 1 });
-const pass = JSON.stringify({ verdict: "pass", summary: "Inspected the relevant implementation." });
+const pass = JSON.stringify({ status: "completed", verdict: "pass", summary: "Inspected the relevant implementation." });
 const testCommand = { command: "node --test", exitCode: 0, ok: true };
 
 it("rejects unknown dependencies, cycles, unordered writers and unsafe file scopes before coding", () => {
@@ -115,7 +115,7 @@ it("runs Claude frontend and assistance, GPT backend, with dependencies and fres
       else { if (active === 2) release(); await together; }
       if (job.phase.endsWith("api")) finished.add("api");
       active--;
-      return result("Implemented assigned files.");
+      return result(JSON.stringify({ status: "completed", summary: "Implemented assigned files." }));
     }
     return result(pass, job.phase === "Test" ? [testCommand] : []);
   }, () => {});

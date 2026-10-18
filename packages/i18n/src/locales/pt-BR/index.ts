@@ -2754,6 +2754,8 @@ export const ptBR = {
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "O plano de colaboração precisa de ajustes. Consulte os detalhes antes de continuar.",
+    COLLABORATION_WORKSPACE_BLOCKED: "Não foi possível vincular o diretório de trabalho. Nenhum subagente foi iniciado.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "Uma subtarefa não terminou. As tarefas seguintes foram interrompidas. Veja a tarefa, o diretório e o motivo.",
     COLLABORATION_VERIFICATION_BLOCKED: "A verificação está incompleta. Resolva o pré-requisito indicado e continue.",
     COLLABORATION_CHECKS_FAILED: "A revisão ou os testes falharam após as tentativas de correção. Consulte os detalhes.",
     COLLABORATION_WORKFLOW_FAILED: "O fluxo de colaboração foi interrompido. Consulte a etapa nos detalhes.",

@@ -2944,6 +2944,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "The collaboration plan needs revision. Expand details before continuing.",
+    COLLABORATION_WORKSPACE_BLOCKED: "No child agents started: the workflow workspace could not be bound. Check the directory in the details.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "A child task could not finish. Subsequent tasks were stopped. See the task, workspace and reason below.",
     COLLABORATION_VERIFICATION_BLOCKED: "Verification is incomplete. Resolve the prerequisite in the details, then continue.",
     COLLABORATION_CHECKS_FAILED: "Review or tests still failed after bounded repair. Expand details to continue fixing.",
     COLLABORATION_WORKFLOW_FAILED: "The collaboration workflow stopped. Expand details for the failed stage.",

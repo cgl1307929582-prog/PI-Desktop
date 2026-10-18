@@ -11,6 +11,7 @@ pub mod probe;
 pub mod registry;
 pub mod remove;
 mod repo_lock;
+pub mod workflow;
 
 #[cfg(test)]
 pub(crate) mod test_support;

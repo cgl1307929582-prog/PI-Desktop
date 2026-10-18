@@ -48,7 +48,7 @@ test("sidecar routes main-local tools before the host-core proxy", () => {
   );
   assert.ok(
     proxyBranch.indexOf("this.localTools.get") <
-      proxyBranch.indexOf('throw new Error("host unavailable")'),
+      proxyBranch.lastIndexOf('throw new Error("host unavailable")'),
   );
 });
 

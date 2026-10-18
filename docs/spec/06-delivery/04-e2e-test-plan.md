@@ -18245,3 +18245,19 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Automation:** `collaboration-workflow.test.ts`, `collaboration-workflow-turn.test.ts`,
   `collaboration-runtime.test.ts`, i18n user-facing-copy tests. Packaged live-model and
   installed preservation evidence is recorded separately from deterministic fixtures.
+
+
+### E2E-COLLABORATION-workflow-worktree-binding
+
+- **Goal:** Every workflow stage runs in the intended existing worktree; a blocked
+  implementation never releases dependencies or verification.
+- **Automation:** `node scripts/e2e-workflow-worktree.mjs` uses a real host, temporary
+  Git main/sibling worktrees and deterministic model replies. It exercises absolute
+  and relative writes, Edit, Read, Grep, Glob, shell cwd, target instructions,
+  unchanged main checkout, invalid roots, scope rejection and one parent conversation.
+  Runtime tests cover cancelled/drained siblings, merge conflicts, permission denial,
+  frozen retry roots and concurrent binding; host tests cover membership and ambiguity.
+- **Live acceptance:** Run Claude and the configured pro GPT in the packaged app
+  against a disposable linked worktree; inspect actual tool evidence and verify the
+  original checkout is unchanged. Installation and user-data preservation are separate
+  gates, not inferred from mocked-model success.

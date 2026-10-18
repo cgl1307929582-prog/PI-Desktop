@@ -2784,6 +2784,8 @@ sklm: {
   },
   "errors": {
     COLLABORATION_PLAN_FAILED: "El plan de colaboración necesita ajustes. Abre los detalles antes de continuar.",
+    COLLABORATION_WORKSPACE_BLOCKED: "No se pudo vincular el directorio de trabajo. No se iniciaron subagentes.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "Una subtarea no terminó. Se detuvieron las tareas posteriores. Consulta la tarea, el directorio y el motivo.",
     COLLABORATION_VERIFICATION_BLOCKED: "La verificación está incompleta. Resuelve el requisito indicado y continúa.",
     COLLABORATION_CHECKS_FAILED: "La revisión o las pruebas fallaron tras los intentos de reparación. Consulta los detalles.",
     COLLABORATION_WORKFLOW_FAILED: "El flujo de colaboración se detuvo. Consulta la etapa fallida en los detalles.",

@@ -2808,6 +2808,8 @@ sklm: {
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "協作計畫仍需調整，展開詳情後可繼續。",
+    COLLABORATION_WORKSPACE_BLOCKED: "工作目錄綁定失敗，尚未啟動子 agent。請查看詳情中的目標目錄與原因。",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "子任務未完成，後續任務已停止。請查看詳情中的任務、工作目錄與具體原因。",
     COLLABORATION_VERIFICATION_BLOCKED: "驗證尚未完成。請先解決詳情中的前置條件，再繼續驗證。",
     COLLABORATION_CHECKS_FAILED: "審查或測試未通過，已停止自動修復。展開詳情查看待修問題。",
     COLLABORATION_WORKFLOW_FAILED: "協作流程已停止，展開詳情查看中斷的階段。",

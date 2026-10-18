@@ -1,6 +1,7 @@
 //! `worktree.*` methods and the isolated-session hooks of `session.create` and
 //! `session.delete` (ADR 0329). Callers name a session or a project; no
-//! method accepts a worktree path.
+//! isolation method accepts a worktree path. The read-only workflow resolver
+//! separately validates an existing linked checkout; it never creates one.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -68,6 +69,10 @@ pub(super) async fn handle(
 ) -> Result<Value, JsonRpcError> {
     let git = GitRunner::default();
     match method {
+        "worktree.workflow.resolve" => {
+            let root = workflow_root(state, &params).await?;
+            Ok(json!({ "workspaceRoot": root }))
+        }
         // Whether a project can host isolated sessions, for the create switch
         // (PRD R6) and the "uncommitted changes are not included" notice (R2b).
         "worktree.probe" => {
@@ -210,6 +215,44 @@ pub(super) async fn handle(
             "NOT_FOUND",
         )),
     }
+}
+
+/// This read-only API is separate from host-created isolation. It validates
+/// existing linked checkouts; selecting one does not grant tool permission.
+pub(super) async fn workflow_root(
+    state: &Arc<Mutex<AppState>>,
+    params: &Value,
+) -> Result<std::path::PathBuf, JsonRpcError> {
+    let session_id = str_param(params, "sessionId")?;
+    let (primary, isolated) = {
+        let st = state.lock().await;
+        let primary = super::resolve_tool_workspace(&st, session_id)?
+            .ok_or_else(|| rpc_err(1002, "session workspace unavailable", "INVALID_PARAMS"))?;
+        ensure_local_project(&st.db, &primary)?;
+        if let Some(id) = params.get("delegationId").and_then(Value::as_str) {
+            return delegate::tool_root(&st.db, session_id, Some(id))
+                .map_err(to_rpc)?
+                .ok_or_else(|| {
+                    to_rpc(WorktreeError::new(
+                        "WORKTREE_WORKFLOW_BLOCKED",
+                        "Delegate worktree binding is missing",
+                    ))
+                });
+        }
+        let isolated = lifecycle::tool_root(&st.db, session_id)
+            .map_err(to_rpc)?
+            .is_some();
+        (primary, isolated)
+    };
+    crate::session_worktrees::workflow::resolve(
+        &GitRunner::default(),
+        Path::new(&primary),
+        params.get("workspace").and_then(Value::as_str),
+        params.get("request").and_then(Value::as_str).unwrap_or(""),
+        isolated,
+    )
+    .await
+    .map_err(to_rpc)
 }
 
 /// Give a just-created session its worktree. On failure the session is

@@ -1,8 +1,9 @@
 import { collaborationSettings, collaborationPrompt, hasCollaborationWorkflow, COLLABORATION_ANALYST, COLLABORATION_EXECUTOR, COLLABORATION_VERIFIER, COLLABORATION_ROLE_NAMES, type CollaborationSettings } from "@pi-desktop/shared";
 import { CollaborationReview } from "./collaboration-review.js";
-import { assertWorkflowWritePath, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult } from "./collaboration-workflow.js";
+import { assertWorkflowWritePath, implementationBlocker, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult } from "./collaboration-workflow.js";
 import { workflowCommandEvidence } from "./collaboration-workflow-evidence.js";
 import { CollaborationWorkflowTurn } from "./collaboration-workflow-turn.js";
+import { boundMergedInstructions } from "./project-instructions.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -1820,7 +1821,7 @@ export class DesktopAgentRuntime {
   private collaborationRequest = "";
   private workflowTurn = new CollaborationWorkflowTurn();
   private workflowTasks = new Map<string, WorkflowJob>();
-  private workflowDelegates = new Map<string, { job: WorkflowJob; commands: WorkflowCommand[]; readCalls: number }>();
+  private workflowDelegates = new Map<string, { job: WorkflowJob; workspaceRoot?: string; blocker?: string; commands: WorkflowCommand[]; readCalls: number }>();
   private subagentProviders: Record<string, RuntimeProviderConfig>;
   private subagentModelKeys: Set<string>;
   /** On-demand Task.model grants; never mixed into launch opt-in matching. */
@@ -3446,10 +3447,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             ? remoteMutationIdentity(this.remoteWorkspace, params.path)
             : await mutationFailureKey(
                 params.path,
-                this.workspaceRoot ?? this.projectPath ?? this.scratchDir,
+                this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "")?.workspaceRoot ?? this.workspaceRoot ?? this.projectPath ?? this.scratchDir,
               )
           : undefined;
-        await this.loadPathInstructions(toolName, params);
+        if (!this.mutationOwners.has(toolCallId)) await this.loadPathInstructions(toolName, params);
         const isBash = toolName === "Bash";
         const timeoutMs = isBash ? commandTimeoutMs(params) : undefined;
         let progress = "";
@@ -3590,6 +3591,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 : {}),
               // A Write/Edit delegate of an isolated session runs in its own
               // worktree; host-core resolves the key against its registry.
+              ...(this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "")?.job.workspaceRoot
+                ? { workflowWorkspace: this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "")!.job.workspaceRoot }
+                : {}),
               ...(this.delegateWorktrees.has(toolCallId)
                 ? { delegationId: this.delegateWorktrees.get(toolCallId) }
                 : {}),
@@ -3606,6 +3610,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (executionFailed) throw executionError;
         if (!result) throw new Error("tool execution returned no result");
         const workflowDelegate = this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "");
+        if (workflowDelegate && result.denied) {
+          workflowDelegate.blocker = `Permission denied for ${toolName}: ${JSON.stringify(result.content).slice(0, 1600)}`;
+          this.delegations.get(this.mutationOwners.get(toolCallId) ?? "")?.abort();
+        }
         if (toolName === "Read" && workflowDelegate && result.ok && !result.isError && !result.denied) workflowDelegate.readCalls += 1;
         if (toolName === "Bash" && workflowDelegate && workflowDelegate.commands.length < 64) {
           workflowDelegate.commands.push(workflowCommandEvidence(
@@ -4426,11 +4434,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * collaboration rules are deliberately left out — a delegate has no user to
    * talk to, and its report format is set by `composeSubagentSystemPrompt`.
    */
-  private subagentGuidance(definition: SubagentDefinition): string[] {
+  private subagentGuidance(definition: SubagentDefinition, instructions = this.projectInstructions, workspaceRoot?: string): string[] {
     const tools = new Set(
       resolveSubagentToolNames(definition, [...this.toolCatalog.keys()]),
     );
     const blocks: string[] = [];
+    if (workspaceRoot) blocks.push(`Execution workspace: ${workspaceRoot}. All file tools and Bash use this directory. Use paths relative to it; do not change to the parent checkout. Read relevant nested AGENTS.md instructions before editing a new directory.`);
     if (tools.has("Read") || tools.has("Grep") || tools.has("Glob")) {
       blocks.push(
         "Searching and reading: prefer Read, Grep, and Glob over shell text utilities. Read accepts only an existing regular text file, never a directory. If a file name is uncertain or a directory must be listed, use Glob when it is available; otherwise use a bounded available search or listing tool instead of guessing a file name or reading the directory. Scope every call — Grep takes a file-or-directory `path` plus `include`, `outputMode`, and `headLimit`; Glob takes a directory `path` and `limit`; Read takes `offset` and `limit` and always reports `totalLines`; use Grep to locate content in large files before reading a targeted range. Use `outputMode: \"filesWithMatches\"` or `\"count\"` when contents are not needed. Grep uses the system's `rg` when installed and an in-process searcher otherwise — call Grep rather than shelling out to `rg`. Your context is finite too: an unscoped search over the whole workspace costs the tokens you need to finish.",
@@ -4453,7 +4462,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       const skillsPrompt = pluginSkillsPrompt(this.pluginSkills);
       if (skillsPrompt) blocks.push(skillsPrompt);
     }
-    const projectPrompt = projectInstructionsPrompt(this.projectInstructions);
+    const projectPrompt = projectInstructionsPrompt(instructions);
     if (projectPrompt) blocks.push(projectPrompt);
     return blocks;
   }
@@ -4863,6 +4872,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           );
         }
         const delegationId = randomUUID();
+        const workflowJob = this.workflowTasks.get(toolCallId);
+        let delegateRoot = workflowJob?.workspaceRoot ?? this.workspaceRoot ?? this.projectPath ?? this.scratchDir;
         // ADR 0329: in an isolated session a delegate that can write files gets
         // its own worktree, keyed by its chain so a resume reuses it.
         const worktreeKey = this.delegateNeedsWorktree(declaredToolNames)
@@ -4872,12 +4883,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // Reserve before yielding: parallel Task calls also count worktrees
           // that are still being prepared toward the session concurrency cap.
           this.pendingDelegationStarts += 1;
+          let created = false;
           try {
             await this.host.call("worktree.delegate.create", {
               sessionId: this.sessionId,
               delegationId: worktreeKey,
             });
+            created = true;
+            const binding = await this.host.call<{ workspaceRoot: string }>("worktree.workflow.resolve", {
+              sessionId: this.sessionId, delegationId: worktreeKey,
+            });
+            if (!binding?.workspaceRoot) throw new Error("Host did not return the delegate worktree root.");
+            delegateRoot = binding.workspaceRoot;
           } catch (error) {
+            if (created) await this.settleDelegateWorktree(worktreeKey, false, delegationId);
             return this.subagentToolError(
               toolCallId,
               `Could not prepare an isolated worktree for the ${definition.name} subagent: ${
@@ -4955,11 +4974,22 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           if (workflowSignal.aborted) record.abort();
         }
         this.delegations.set(delegationId, record);
-        const workflowJob = this.workflowTasks.get(toolCallId);
-        if (workflowJob) this.workflowDelegates.set(delegationId, { job: workflowJob, commands: [], readCalls: 0 });
+        if (workflowJob) this.workflowDelegates.set(delegationId, { job: workflowJob, workspaceRoot: delegateRoot, commands: [], readCalls: 0 });
         let subagentRun: SubagentRun;
         try {
           const scopedTools = this.scopeDelegateTools(tools, definition, delegationId, worktreeKey);
+          let instructions = this.projectInstructions;
+          if (delegateRoot && (workflowJob || worktreeKey)) {
+            const entries = new Map<string, { source: string; content: string }>();
+            for (const path of [delegateRoot, ...(workflowJob?.files ?? [])]) {
+              const resolved = await this.host.call<ProjectInstructions | undefined>("project.instructions.resolve", {
+                sessionId: this.sessionId, path, workflowWorkspace: workflowJob?.workspaceRoot,
+                ...(worktreeKey ? { delegationId: worktreeKey } : {}),
+              });
+              for (const entry of resolved?.entries ?? []) entries.set(entry.source, entry);
+            }
+            instructions = boundMergedInstructions([...entries.values()]);
+          }
           subagentRun = new SubagentRun({
             definition,
             sessionId: this.sessionId,
@@ -4987,7 +5017,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             },
             systemPrompt: composeSubagentSystemPrompt({
               definition,
-              guidance: this.subagentGuidance(definition),
+              guidance: this.subagentGuidance(definition, instructions, delegateRoot),
               toolNames: declaredToolNames,
             }),
             tools: scopedTools,
@@ -5002,12 +5032,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             // A resumed run replays its chain before this turn's `task` (ADR 0276).
             ...(initialMessages ? { initialMessages } : {}),
           });
-        } catch {
+        } catch (error) {
+          const workflow = this.workflowDelegates.get(delegationId);
+          if (workflow) workflow.blocker = `Could not load instructions or start the task in ${delegateRoot}: ${error instanceof Error ? error.message : String(error)}`;
           // A constructor/scope failure happens after registry allocation. Make
           // it terminal before returning or idle auto-resume will await a
           // completion promise for a worker that never existed.
           record.reportDelivered = true;
-          if (worktreeKey) void this.settleDelegateWorktree(worktreeKey, false, delegationId);
+          if (worktreeKey) await this.settleDelegateWorktree(worktreeKey, false, delegationId);
           this.settleDelegation(record, {
             agentName: definition.name,
             modelId: provider.modelId,
@@ -5021,9 +5053,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               message: "The subagent runtime could not be initialized.",
             },
           });
+          const reason = workflow?.blocker ?? (error instanceof Error ? error.message : String(error));
+          this.workflowDelegates.delete(delegationId);
           return this.subagentToolError(
             toolCallId,
-            `Could not initialize the ${definition.name} subagent. No work was started.`,
+            `Could not initialize ${definition.name} in ${delegateRoot ?? "session workspace"}: ${reason}. No work was started.`,
           );
         }
 
@@ -5088,10 +5122,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return tools.map((tool) => ({
       ...tool,
       execute: async (toolCallId, args, signal, onUpdate) => {
-        const workflowJob = this.workflowDelegates.get(mutationOwner)?.job;
-        if (workflowJob?.files && ["Write", "Edit"].includes(tool.name)) {
-          assertWorkflowWritePath(workflowJob.files, isRecord(args) ? args.path ?? args.file_path : undefined,
-            this.workspaceRoot ?? this.projectPath ?? this.scratchDir ?? ".");
+        const workflow = this.workflowDelegates.get(mutationOwner);
+        if (workflow?.blocker) throw new Error(workflow.blocker);
+        if (workflow?.job.files && ["Write", "Edit"].includes(tool.name)) {
+          try {
+            assertWorkflowWritePath(workflow.job.files, isRecord(args) ? args.path ?? args.file_path : undefined,
+              workflow.workspaceRoot ?? this.workspaceRoot ?? this.projectPath ?? this.scratchDir ?? ".");
+          } catch (error) {
+            workflow.blocker = error instanceof Error ? error.message : String(error);
+            this.delegations.get(mutationOwner)?.abort();
+            throw error;
+          }
         }
         this.mutationOwners.set(toolCallId, mutationOwner);
         if (scope !== DEFAULT_SUBAGENT_PERMISSION) {
@@ -5100,6 +5141,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (worktreeKey) this.delegateWorktrees.set(toolCallId, worktreeKey);
         try {
           return await tool.execute(toolCallId, args, signal, onUpdate);
+        } catch (error) {
+          if (workflow && !signal?.aborted) {
+            workflow.blocker ??= `${tool.name} could not execute in ${workflow.workspaceRoot}: ${error instanceof Error ? error.message : String(error)}`;
+            this.delegations.get(mutationOwner)?.abort();
+          }
+          throw error;
         } finally {
           this.delegatePermissionScopes.delete(toolCallId);
           this.delegateWorktrees.delete(toolCallId);
@@ -5130,13 +5177,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     record: DelegationRecord,
     result: SubagentRunResult,
   ): Promise<void> {
+    const workflow = this.workflowDelegates.get(record.delegationId);
+    if (workflow?.job.files) workflow.blocker ??= implementationBlocker({ ...result, blocker: workflow.blocker });
     if (record.worktreeKey && record.status === "running") {
       const note = await this.settleDelegateWorktree(
         record.worktreeKey,
-        result.status === "completed",
+        result.status === "completed" && !workflow?.blocker,
         record.delegationId,
       );
-      if (note) result = { ...result, report: result.report ? `${result.report}\n\n${note}` : note };
+      if (workflow) {
+        // Preserve the structured implementation report; settlement is trusted
+        // evidence and cannot be overridden by the model's completion claim.
+        if (workflow.blocker) result = { ...result, status: "failed" };
+      } else if (note) result = { ...result, report: result.report ? `${result.report}\n\n${note}` : note };
     }
     this.settleDelegation(record, result);
   }
@@ -5153,8 +5206,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         "worktree.delegate.settle",
         { sessionId: this.sessionId, delegationId: worktreeKey, merge },
       );
-      return delegateWorktreeNote(settlement, resume);
+      const note = delegateWorktreeNote(settlement, resume);
+      const workflow = this.workflowDelegates.get(delegationId);
+      if (workflow && !["none", "noChanges", "merged"].includes(settlement.result)) workflow.blocker ??= `The child worktree did not settle into the workflow target (${settlement.result}). ${"files" in settlement ? `Conflicting files: ${settlement.files.join(", ")}.` : "reason" in settlement ? settlement.reason : "Changes remain in the child worktree."} Resolve the retained worktree before restarting the workflow in a new turn. Direct Task resume is unavailable inside a structured workflow.`;
+      return note;
     } catch (error) {
+      const workflow = this.workflowDelegates.get(delegationId);
+      if (workflow) workflow.blocker ??= `Isolated worktree could not merge: ${error instanceof Error ? error.message : String(error)}`;
       return `Isolated worktree: merge-back failed (${
         error instanceof Error ? error.message : String(error)
       }); the subagent's changes are kept. Continue with ${resume} to retry.`;
@@ -5579,6 +5637,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       description: `${this.collaboration.mode === "auto" ? "Optional: decide whether collaboration materially helps first. Handle small tasks and their tests directly without this tool. When needed, run" : "Run"} the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use for the complete task, including any direct edits already made. Repeated calls return the settled result. After a failed verification, retry=verify with retryReason runs one fresh verification without writers, preserving the original task, models, preset and acceptance. Resolve prerequisites first; do not retry unchanged environmental blockers. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
       parameters: Type.Object({
         task: Type.String({ minLength: 1, maxLength: 16000, description: "Complete task, constraints, agreed API behavior and acceptance criteria." }),
+        workspace: Type.Optional(Type.String({ minLength: 1, maxLength: 4096, description: "Absolute existing worktree directory intended by the user. Set this when the task names W/worktree/workspace different from the current project. Host verifies same-repository membership and binds all stages. If omitted, an explicit W=/path or workspace=/path declaration on its own line in the user request is selected automatically; otherwise use the session root. Never invent or create a directory here." })),
         preset: Type.Optional(Type.Union([Type.Literal("quick"), Type.Literal("standard"), Type.Literal("deep"), Type.Literal("review")], { description: "Required for automatic selection: choose the smallest sufficient workflow. A manually locked preset cannot be changed." })),
         reason: Type.Optional(Type.String({ minLength: 1, maxLength: 500, description: "Required for automatic selection: briefly explain why this workflow fits the actual task." })),
         readOnly: Type.Optional(Type.Boolean({ description: "Analyze, plan or review without implementation or shell commands." })),
@@ -5593,7 +5652,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             content: [{ type: "text", text: result.stages.map(stage => `${stage.status}: ${stage.phase}`).join("\n") }],
             details: { workflow: { ...result, plan: undefined,
               stages: result.stages.map(stage => ({ id: stage.id, phase: stage.phase, agent: stage.agent, status: stage.status })) } },
-          }), signal);
+          }), signal, async (workspace, request) => {
+            const binding = await this.host.call<{ workspaceRoot: string }>("worktree.workflow.resolve", { sessionId: this.sessionId, workspace, request });
+            if (!binding?.workspaceRoot) throw new Error("Host did not return a validated workspace.");
+            return binding.workspaceRoot;
+          });
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
           details: { workflow: result },
@@ -5635,6 +5698,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         toolCalls: settled?.toolCalls ?? 0,
         readCalls: this.workflowDelegates.get(record.delegationId)?.readCalls ?? 0,
         commands: this.workflowDelegates.get(record.delegationId)?.commands ?? [],
+        blocker: this.workflowDelegates.get(record.delegationId)?.blocker,
       };
     } catch (error) {
       record?.abort();

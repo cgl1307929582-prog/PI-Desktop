@@ -12137,6 +12137,7 @@ describe("isolated-session subagent worktrees (ADR 0329)", () => {
           if (createError) throw createError;
           return { worktree: { branch: "pi-desktop/s-d", status: "active" } };
         }
+        if (method === "worktree.workflow.resolve") return { workspaceRoot: "/worktree/delegate" };
         if (method === "worktree.delegate.settle") return { settlement };
         if (method === "tools.execute") return { ok: true, content: {} };
         return undefined;

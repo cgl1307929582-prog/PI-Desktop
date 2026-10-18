@@ -20,7 +20,7 @@ const pass = '{"verdict":"pass","summary":"Read app.txt:1; it contains the reque
 const fail = '{"verdict":"fail","summary":"app.txt:1 still contains the old behavior; repair it."}';
 
 async function fixture(replies: Record<string, Reply[]> | ((request: Request) => Reply), collaboration = settings, beforeReview?: () => Promise<void>, isolated = false,
-  bashResult = { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" }, beforeHost?: (method: string, input: unknown) => Promise<void>) {
+  bashResult = { exitCode: 0, stdout: "Fixture checks passed.", stderr: "" }, beforeHost?: (method: string, input: unknown) => Promise<unknown>) {
   const workspace = await mkdtemp(join(tmpdir(), "pi-collaboration-"));
   await writeFile(join(workspace, "app.txt"), "old");
   const requests: Request[] = [];
@@ -55,7 +55,9 @@ async function fixture(replies: Record<string, Reply[]> | ((request: Request) =>
     subagentProviders: { "claude/implement": provider("claude", "implement"), "pro/review": provider("pro", "review") },
     onEvent: (event) => events.push(event),
     host: { call: async <T>(method: string, input?: unknown): Promise<T> => {
-      await beforeHost?.(method, input);
+      const override = await beforeHost?.(method, input);
+      if (override !== undefined) return override as T;
+      if (method === "worktree.workflow.resolve") return { workspaceRoot: workspace } as T;
       if (method === "project.instructions.resolve") return undefined as T;
       if (method === "worktree.delegate.settle") return { settlement: { result: "noChanges" } } as T;
       if (method === "tools.execute") {
@@ -200,7 +202,7 @@ function workflowReply(request: Request, options: { fakeTests?: boolean; fakeRev
     { name: "CollaborationWorkflow", arguments: { task: "Fix the frontend and backend files." } },
   ];
   if (context.includes("Produce an implementation plan")) return hasTool ? workflowPlan : read;
-  if (context.includes("Your assignment:")) return hasTool ? "Implemented." : [
+  if (context.includes("Your assignment:")) return hasTool ? '{"status":"completed","summary":"Implemented assigned files."}' : [
     { name: "Write", arguments: { path: options.outsideScope ? "forbidden.txt" : request.model === "implement" ? "app.txt" : "api.txt", content: "fixed" } },
   ];
   if (context.includes("Your stage is automated test execution")) return hasTool || options.fakeTests ? pass : [
@@ -288,6 +290,28 @@ it("workflow blocks direct Task bypass and out-of-scope file edits", async () =>
   await expect(readFile(join(scoped.workspace, "forbidden.txt"))).rejects.toThrow();
   expect(scoped.executed).not.toContain("Write");
   expect(JSON.stringify(scoped.events)).toContain("assigned files");
+  expect(JSON.stringify(scoped.events)).toContain("COLLABORATION_IMPLEMENTATION_BLOCKED");
+  expect(scoped.executed).not.toContain("Bash");
+  expect(scoped.requests.some(request => JSON.stringify(request.messages).includes("Your stage is source review only"))).toBe(false);
+}, 20_000);
+
+it.each(["conflict", "notMerged"])("stops verification when native worktree settlement is %s", async settlement => {
+  const f = await fixture(request => workflowReply(request), workflowSettings, undefined, true, undefined,
+    async method => method === "worktree.delegate.settle" ? { settlement: { result: settlement, files: ["app.txt"], reason: "Parent busy" } } : undefined);
+  await f.runtime.prompt("Fix and test both files.");
+  expect(f.executed).toContain("Write");
+  expect(f.executed).not.toContain("Bash");
+  expect(JSON.stringify(f.events)).toContain("COLLABORATION_IMPLEMENTATION_BLOCKED");
+}, 20_000);
+
+it("cannot override a host permission denial with a completed implementation report", async () => {
+  const f = await fixture(request => workflowReply(request), workflowSettings, undefined, false, undefined,
+    async (method, input) => method === "tools.execute" && (input as { toolName: string }).toolName === "Write"
+      ? { ok: false, denied: true, content: "Permission denied for target worktree" } : undefined);
+  await f.runtime.prompt("Fix and test both files.");
+  expect(f.executed).not.toContain("Bash");
+  expect(JSON.stringify(f.events)).toContain("Permission denied for target worktree");
+  expect(JSON.stringify(f.events)).toContain("COLLABORATION_IMPLEMENTATION_BLOCKED");
 }, 20_000);
 
 it("workflow rejects a test pass claimed without any shell execution", async () => {

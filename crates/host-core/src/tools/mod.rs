@@ -633,6 +633,10 @@ pub struct ToolsExecuteParams {
     /// host-core resolves it against its registry; an unknown id is ignored.
     #[serde(default)]
     pub delegation_id: Option<String>,
+    /// Existing linked checkout selected for this workflow. Host-core validates
+    /// its Git identity on every call; external-path permissions still apply.
+    #[serde(default)]
+    pub workflow_workspace: Option<String>,
     #[serde(default)]
     pub expected_command_shell_id: Option<String>,
     #[serde(default)]

@@ -2816,6 +2816,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "İş birliği planı düzeltilmeli. Devam etmeden önce ayrıntıları açın.",
+    COLLABORATION_WORKSPACE_BLOCKED: "Çalışma dizini bağlanamadı. Hiçbir alt aracı başlatılmadı.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "Bir alt görev tamamlanamadı. Sonraki görevler durduruldu. Görev, dizin ve nedeni ayrıntılarda görebilirsiniz.",
     COLLABORATION_VERIFICATION_BLOCKED: "Doğrulama tamamlanmadı. Ayrıntılardaki ön koşulu çözün ve devam edin.",
     COLLABORATION_CHECKS_FAILED: "Sınırlı düzeltme denemelerinden sonra inceleme veya testler başarısız. Ayrıntıları açın.",
     COLLABORATION_WORKFLOW_FAILED: "İş birliği akışı durdu. İlgili aşama için ayrıntıları açın.",

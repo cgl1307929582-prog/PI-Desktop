@@ -2786,6 +2786,8 @@ sklm: {
   },
   "errors": {
     COLLABORATION_PLAN_FAILED: "Der Zusammenarbeitsplan muss überarbeitet werden. Details vor dem Fortfahren öffnen.",
+    COLLABORATION_WORKSPACE_BLOCKED: "Arbeitsverzeichnis konnte nicht zugeordnet werden. Es wurden keine Unteragenten gestartet.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "Eine Teilaufgabe ist unvollständig. Nachfolgende Aufgaben wurden gestoppt. Details enthalten Aufgabe, Verzeichnis und Ursache.",
     COLLABORATION_VERIFICATION_BLOCKED: "Die Prüfung ist unvollständig. Zuerst die Voraussetzung in den Details erfüllen.",
     COLLABORATION_CHECKS_FAILED: "Prüfung oder Tests sind nach begrenzten Korrekturen fehlgeschlagen. Details öffnen.",
     COLLABORATION_WORKFLOW_FAILED: "Der Zusammenarbeitsablauf wurde angehalten. Details zur betroffenen Phase öffnen.",

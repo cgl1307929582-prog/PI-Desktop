@@ -2822,6 +2822,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "협업 계획을 수정해야 합니다. 세부 정보를 확인한 뒤 계속하세요.",
+    COLLABORATION_WORKSPACE_BLOCKED: "작업 디렉터리를 연결하지 못했습니다. 하위 에이전트가 시작되지 않았습니다.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "하위 작업이 완료되지 않아 후속 작업을 중지했습니다. 작업, 디렉터리와 원인을 확인하세요.",
     COLLABORATION_VERIFICATION_BLOCKED: "검증이 완료되지 않았습니다. 세부 정보의 선행 조건을 해결한 뒤 계속하세요.",
     COLLABORATION_CHECKS_FAILED: "제한된 수정 시도 후에도 검토 또는 테스트가 실패했습니다. 세부 정보를 확인하세요.",
     COLLABORATION_WORKFLOW_FAILED: "협업 워크플로가 중단되었습니다. 세부 정보에서 해당 단계를 확인하세요.",

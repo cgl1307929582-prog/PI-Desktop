@@ -6,6 +6,14 @@
 - Related: ADR 0062 (parallel delegates), ADR 0089 (delegation tools),
   D114 (per-session scratch), `docs/spec/03-runtime/03-tools-and-permissions.md` §4d
 
+Existing-worktree workflow binding is specified separately in
+[composer collaboration](composer-native-collaboration.md). Its read-only host
+resolver may accept an existing path, validate common Git identity and membership,
+and revalidate it at tool execution without granting permissions. It does not
+create or manage a worktree and cannot retarget an already isolated session.
+Host-created delegate paths remain registry-owned; the runtime only reads their
+validated execution roots for instructions and file ownership.
+
 ## Context
 
 Several sessions of one project can run at the same time, but they all

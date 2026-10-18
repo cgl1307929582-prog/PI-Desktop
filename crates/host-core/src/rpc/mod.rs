@@ -3899,6 +3899,22 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
             let execution_timeout_ms = tools::effective_timeout_ms(&p.tool_name, p.timeout_ms);
 
+            let workflow_workspace = if let Some(root) = p.workflow_workspace.as_deref() {
+                Some(
+                    worktree_rpc::workflow_root(
+                        &state,
+                        &json!({
+                            "sessionId": p.session_id, "workspace": root,
+                        }),
+                    )
+                    .await?
+                    .to_string_lossy()
+                    .into_owned(),
+                )
+            } else {
+                None
+            };
+
             let remote_workspace = {
                 let st = state.lock().await;
                 // A session the store does not have keeps the local tool path
@@ -4052,23 +4068,36 @@ async fn handle_request(
                     .map_err(worktree_rpc::to_rpc)?
                     {
                         Some(root) => Some(root.to_string_lossy().into_owned()),
-                        None => resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?,
+                        None => match workflow_workspace.as_ref() {
+                            Some(root) => Some(root.clone()),
+                            None => resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?,
+                        },
                     };
                     let scratch = scratch::session_dir(&st.data_dir, &p.session_id);
-                    let external_path_permission = if remote_workspace.is_some() {
-                        remote_tools::requires_external_permission(
-                            ws.as_deref(),
-                            &p.tool_name,
-                            &p.args,
-                        )
-                    } else {
-                        requires_external_path_permission(
-                            ws.as_deref(),
-                            scratch.as_deref(),
-                            &p.tool_name,
-                            &p.args,
-                        )
-                    };
+                    let external_workflow = workflow_workspace.as_ref().is_some_and(|root| {
+                        resolve_tool_workspace(&st, &p.session_id)
+                            .ok()
+                            .flatten()
+                            .and_then(|primary| {
+                                workspace::simple_canonicalize(Path::new(&primary)).ok()
+                            })
+                            .is_none_or(|primary| primary != Path::new(root))
+                    });
+                    let external_path_permission = external_workflow
+                        || if remote_workspace.is_some() {
+                            remote_tools::requires_external_permission(
+                                ws.as_deref(),
+                                &p.tool_name,
+                                &p.args,
+                            )
+                        } else {
+                            requires_external_path_permission(
+                                ws.as_deref(),
+                                scratch.as_deref(),
+                                &p.tool_name,
+                                &p.args,
+                            )
+                        };
                     let mut auto = st
                         .permissions
                         .evaluate_auto_with_permission_mode_and_risk_and_path(

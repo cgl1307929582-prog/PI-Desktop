@@ -149,6 +149,31 @@ on the same file. Cyclic, unknown or unordered overlapping dependencies fail
 before coding. Builtin Write/Edit enforce each task's declared exact file scope.
 Shell permissions remain host-owned; file ownership is not a shell sandbox.
 
+Before starting any stage, the runtime freezes a host-validated execution root.
+`CollaborationWorkflow.workspace` selects an existing linked worktree; if omitted,
+an explicit `W=/absolute/path` or `workspace=/absolute/path` declaration on its own
+line can select it automatically. Mere references to another checkout do not
+redirect execution. Missing, ambiguous or unrelated roots stop before any child
+starts. The host checks canonical paths, Git common-directory identity, registered
+worktree membership and matching project-relative subdirectories. Tools revalidate
+the root on every call. External-path permission checks remain in force; binding
+does not grant permission or change the persisted project. Existing user-owned
+worktrees are never automatically committed, merged or deleted by this binding.
+
+Plan, coding, review and test use the frozen root for file tools and shell cwd,
+and load its instruction chain rather than the parent's. Native isolated-session
+writers retain their host-created child worktrees: their actual root controls
+file ownership and instructions, and their changes must successfully settle back
+before dependencies may run. Verification-only retries cannot switch roots.
+
+Coding reports use `{"status":"completed|blocked|failed","summary":"..."}`.
+A completed model response alone does not release dependencies. Malformed reports,
+explicit blockers, scope/permission denials, and failed merge-back stop scheduling,
+cancel and drain started siblings, and prevent downstream coding and verification.
+Binding failures use `COLLABORATION_WORKSPACE_BLOCKED`; implementation blockers use
+`COLLABORATION_IMPLEMENTATION_BLOCKED`. Details identify the phase/task, bound root,
+cause and recovery, preserving existing changes without claiming verification.
+
 Each check returns structured evidence. Source review requires a successful Read
 of current files against the original task. It does not invent a requirement for
 a clean tree or a pre-change dirty-workspace snapshot; explicitly requested scope

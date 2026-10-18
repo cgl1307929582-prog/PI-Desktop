@@ -7,10 +7,36 @@ import type { WorkflowDelegateResult, WorkflowJob } from "./collaboration-workfl
 const settings: CollaborationSettings = { mode: "auto", workflow: "standard", codingMode: "auto",
   executionModel: "claude/model", reviewModel: "pro/model", maxConcurrency: 2 };
 const plan = JSON.stringify({ summary: "Current implementation", acceptance: ["The complete API passes its tests"], tasks: [] });
-const pass = JSON.stringify({ verdict: "pass", summary: "Verified original requirements." });
+const pass = JSON.stringify({ status: "completed", verdict: "pass", summary: "Verified original requirements." });
 const blocked = JSON.stringify({ verdict: "inconclusive", summary: "Required service is unavailable." });
 const command = { command: "node --test", exitCode: 0, ok: true };
 const evidence = (report = pass, commands: WorkflowDelegateResult["commands"] = [command]): WorkflowDelegateResult => ({ status: "completed", report, commands, toolCalls: 1, readCalls: 1 });
+
+it("reserves the turn while binding and freezes the workspace across verification retries", async () => {
+  const turn = new CollaborationWorkflowTurn();
+  let release!: (root: string) => void;
+  const binding = new Promise<string>(resolve => { release = resolve; });
+  const jobs: WorkflowJob[] = [];
+  const delegate = async (job: WorkflowJob) => { jobs.push(job); return evidence(job.phase === "Plan" ? plan : blocked); };
+  const first = turn.execute(settings, { task: "Verify" }, "W=/repo/target", delegate, () => {}, undefined, () => binding);
+  await expect(turn.execute(settings, { task: "Competing" }, "", delegate, () => {})).rejects.toThrow("already running");
+  release("/repo/target");
+  expect((await first).workspaceRoot).toBe("/repo/target");
+  expect(jobs.every(job => job.workspaceRoot === "/repo/target")).toBe(true);
+  await expect(turn.execute(settings, { task: "Retry", retry: "verify", retryReason: "Ready", workspace: "/repo/main" }, "", delegate, () => {})).rejects.toThrow("workspace");
+});
+
+it("fails binding before starting any child and does not silently fall back to the parent", async () => {
+  const turn = new CollaborationWorkflowTurn();
+  let started = false;
+  const output = await turn.execute(settings, { task: "Implement", workspace: "/gone" }, "", async () => { started = true; return evidence(); }, () => {}, undefined,
+    async () => { throw new Error("Target worktree disappeared"); });
+  expect(started).toBe(false);
+  expect(output.failureCode).toBe("COLLABORATION_WORKSPACE_BLOCKED");
+  expect(output.error).toContain("/gone");
+  expect(output.error).toContain("disappeared");
+  expect(turn.running).toBe(false);
+});
 
 it("runs a real bounded verification retry with frozen requirements, settings and repair budget", async () => {
   const turn = new CollaborationWorkflowTurn();

@@ -62,6 +62,9 @@ const HOST_PROXY_ALLOWED = new Set([
   "plans.pending",
   "plans.abort",
   "project.instructions.resolve",
+  "worktree.workflow.resolve",
+  "worktree.delegate.create",
+  "worktree.delegate.settle",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
   "app.health",
@@ -493,10 +496,18 @@ export class AgentSidecar {
             throw new Error("project instruction resolver unavailable");
           }
           const sessionId = String(params.sessionId ?? "");
+          let projectPath = this.projectInstructionRoots.get(sessionId);
+          if (params.workflowWorkspace !== undefined || params.delegationId !== undefined) {
+            if (!this.host) throw new Error("host unavailable");
+            const binding = await this.host.call<{ workspaceRoot: string }>("worktree.workflow.resolve", {
+              sessionId, workspace: params.workflowWorkspace, delegationId: params.delegationId,
+            });
+            projectPath = binding.workspaceRoot;
+          }
           const result = await this.projectInstructionResolver({
             sessionId,
             path: String(params.path ?? ""),
-            projectPath: this.projectInstructionRoots.get(sessionId),
+            projectPath,
           });
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",

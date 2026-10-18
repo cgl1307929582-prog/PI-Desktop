@@ -2879,6 +2879,8 @@ sklm: {
   },
   errors: {
     COLLABORATION_PLAN_FAILED: "协作计划仍需调整，展开详情后可继续。",
+    COLLABORATION_WORKSPACE_BLOCKED: "工作目录绑定失败，尚未启动子 agent。请查看详情中的目标目录和原因。",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "子任务未完成，后续任务已停止。请查看详情中的任务、工作目录和具体原因。",
     COLLABORATION_VERIFICATION_BLOCKED: "验证尚未完成。请先解决详情中的前置条件，再继续验证。",
     COLLABORATION_CHECKS_FAILED: "审查或测试未通过，已停止自动修复。展开详情查看待修问题。",
     COLLABORATION_WORKFLOW_FAILED: "协作流程已停止，展开详情查看中断的阶段。",

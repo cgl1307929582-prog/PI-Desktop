@@ -2784,6 +2784,8 @@ sklm: {
   },
   "errors": {
     COLLABORATION_PLAN_FAILED: "Le plan de collaboration doit être révisé. Consultez les détails avant de continuer.",
+    COLLABORATION_WORKSPACE_BLOCKED: "Impossible de lier le dossier de travail. Aucun sous-agent n’a démarré.",
+    COLLABORATION_IMPLEMENTATION_BLOCKED: "Une sous-tâche est inachevée. Les tâches suivantes ont été arrêtées. Consultez la tâche, le dossier et la cause.",
     COLLABORATION_VERIFICATION_BLOCKED: "La vérification est incomplète. Résolvez le prérequis indiqué, puis continuez.",
     COLLABORATION_CHECKS_FAILED: "La revue ou les tests échouent encore après les corrections. Consultez les détails.",
     COLLABORATION_WORKFLOW_FAILED: "Le workflow de collaboration est arrêté. Consultez les détails de la phase concernée.",

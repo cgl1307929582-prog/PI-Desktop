@@ -24,6 +24,28 @@ export type ProjectInstructions = {
   entries: ProjectInstruction[];
 };
 
+/** Combining several assigned paths must not multiply the instruction budget. */
+export function boundMergedInstructions(entries: ProjectInstruction[]): ProjectInstructions {
+  const result: ProjectInstruction[] = [];
+  for (const global of [true, false]) {
+    let remaining = global ? MAX_GLOBAL_INSTRUCTION_BYTES : MAX_PROJECT_INSTRUCTION_BYTES;
+    const selected = [...new Map(entries.filter(entry => (entry.source === GLOBAL_INSTRUCTION_SOURCE) === global)
+      .map(entry => [entry.source, entry])).values()];
+    for (let index = 0; index < selected.length; index++) {
+      const entry = selected[index];
+      // Reserve space for the visible truncation/omission notice, not just text.
+      if (remaining < 1024) {
+        result.push({ source: "PI-Desktop instruction budget", content: `${selected.length - index} additional instruction chain(s) omitted after the ${global ? "global" : "project"} budget. First omitted source: ${entry.source.slice(0, 200)}. Read applicable instructions before editing those paths.` });
+        break;
+      }
+      const limited = limitInstruction(entry.source, entry.content, remaining - 512);
+      result.push(limited.entry);
+      remaining -= Buffer.byteLength(limited.entry.content, "utf8");
+    }
+  }
+  return { entries: result };
+}
+
 export function globalInstructionPath(): string {
   return GLOBAL_INSTRUCTION_PATH;
 }

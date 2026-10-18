@@ -15,10 +15,11 @@ export type WorkflowTask = {
   dependsOn: string[];
 };
 export type WorkflowPlan = { summary: string; acceptance: string[]; tasks: WorkflowTask[] };
-export type WorkflowJob = { id: string; phase: string; agent: string; task: string; files?: string[] };
+export type WorkflowJob = { id: string; phase: string; agent: string; task: string; files?: string[]; workspaceRoot?: string };
 export type WorkflowCommand = { command: string; exitCode: number | null; ok: boolean; denied?: boolean; truncated?: boolean; failureKind?: "runtime-unavailable" };
 export type WorkflowDelegateResult = {
   status: string; report: string; toolCalls: number; readCalls: number; commands: WorkflowCommand[];
+  blocker?: string;
 };
 export type WorkflowStage = {
   id: string; phase: string; agent: string;
@@ -29,7 +30,8 @@ export type WorkflowResult = {
   preset: string; status: "running" | "completed" | "failed" | "cancelled";
   phase: string; stages: WorkflowStage[]; plan?: WorkflowPlan; repairRounds: number;
   error?: string;
-  failureCode?: "COLLABORATION_PLAN_FAILED" | "COLLABORATION_VERIFICATION_BLOCKED" | "COLLABORATION_CHECKS_FAILED" | "COLLABORATION_WORKFLOW_FAILED";
+  workspaceRoot?: string;
+  failureCode?: "COLLABORATION_WORKSPACE_BLOCKED" | "COLLABORATION_IMPLEMENTATION_BLOCKED" | "COLLABORATION_PLAN_FAILED" | "COLLABORATION_VERIFICATION_BLOCKED" | "COLLABORATION_CHECKS_FAILED" | "COLLABORATION_WORKFLOW_FAILED";
   verificationRetry?: boolean;
   selection?: { mode: "auto" | "locked"; reason?: string };
 };
@@ -43,6 +45,20 @@ function strings(value: unknown, max: number, length: number): value is string[]
     && value.every(item => typeof item === "string" && item.trim() && item.length <= length);
 }
 function fileKey(path: string): string { return path.normalize("NFC").toLowerCase(); }
+
+/** A completed model turn is not evidence that implementation completed. */
+export function implementationBlocker(result: Pick<WorkflowDelegateResult, "status" | "report" | "blocker">): string | undefined {
+  if (result.blocker) return result.blocker;
+  if (result.status !== "completed") return result.report || `Agent ended with ${result.status}`;
+  try {
+    const report = parseJson(result.report);
+    if (object(report) && typeof report.summary === "string" && report.summary.trim()) {
+      if (report.status === "completed") return undefined;
+      if (report.status === "blocked" || report.status === "failed") return report.summary;
+    }
+  } catch { /* Preserve the report below; never release dependencies on prose. */ }
+  return `Implementation did not provide a valid completed/blocked/failed report. ${result.report.slice(0, 1600)}`;
+}
 
 /** Plans are data: reject cycles and unordered overlapping writers before any edit. */
 export function parseWorkflowPlan(text: string, maxTasks = 16): WorkflowPlan {
@@ -127,9 +143,10 @@ export class CollaborationWorkflowRunner {
     private settings: CollaborationSettings,
     private delegate: Delegate,
     private progress: (result: WorkflowResult) => void,
+    private workspaceRoot?: string,
   ) {
     this.result = { preset: settings.workflow ?? "adaptive", status: "running", phase: "Plan",
-      stages: [], repairRounds: 0 };
+      stages: [], repairRounds: 0, ...(workspaceRoot ? { workspaceRoot } : {}) };
   }
 
   private notify(): void { this.progress(structuredClone(this.result)); }
@@ -141,17 +158,29 @@ export class CollaborationWorkflowRunner {
     this.result.stages.push(stage);
     this.notify();
     try {
-      const result = await this.delegate({ ...job, id }, signal);
+      const result = await this.delegate({ ...job, id, workspaceRoot: this.workspaceRoot,
+        task: [this.workspaceRoot ? `Workflow target: ${this.workspaceRoot}. Use workspace-relative file paths. The system's execution workspace is authoritative: in an isolated session a writer may use its own child worktree, which the host settles into this target. Never switch directories to bypass that binding.` : "", job.task].filter(Boolean).join("\n\n") }, signal);
       signal?.throwIfAborted();
+      const blocker = job.files ? implementationBlocker(result) : result.blocker;
       stage.status = result.status === "completed" ? "completed" : "failed";
       stage.report = result.report.slice(0, 2400);
       stage.readCalls = result.readCalls;
       stage.commands = result.commands.slice(0, 65).map(command => ({ ...command, command: command.command.slice(0, 3000) }));
       this.notify();
+      if (blocker) {
+        this.result.failureCode = job.files ? "COLLABORATION_IMPLEMENTATION_BLOCKED" : job.phase.startsWith("Plan") ? "COLLABORATION_PLAN_FAILED" : "COLLABORATION_VERIFICATION_BLOCKED";
+        const stopped = job.files || job.phase.startsWith("Plan") ? "Dependent tasks and verification were not started" : "Further workflow stages were stopped; current verification remains incomplete";
+        throw new Error(`${job.phase} stopped. Workspace: ${this.workspaceRoot ?? "session workspace"}. Reason: ${blocker.slice(0, 2400)}\n${stopped}; running sibling tasks were cancelled and drained. Resolve the reported scope, workspace or prerequisite, then continue in a new turn. Existing changes are preserved and remain unverified.`);
+      }
       if (result.status !== "completed") throw new Error(`${job.phase} did not complete: ${result.report.slice(0, 1000)}`);
       return result;
     } catch (error) {
       stage.status = "failed";
+      stage.report = (error instanceof Error ? error.message : String(error)).slice(0, 2400);
+      if (job.files && this.result.failureCode === "COLLABORATION_WORKFLOW_FAILED") {
+        this.result.failureCode = "COLLABORATION_IMPLEMENTATION_BLOCKED";
+        error = new Error(`${job.phase} stopped in ${this.workspaceRoot ?? "session workspace"}: ${stage.report}. Dependent tasks and verification were not started. Resolve this task's blocker before continuing in a new turn.`);
+      }
       this.notify();
       throw error;
     }
@@ -212,6 +241,7 @@ export class CollaborationWorkflowRunner {
           `Your assignment: ${task.task}\nYou may edit ONLY these exact files: ${task.files.join(", ")}`,
           `Upstream results: ${task.dependsOn.map(id => completed.get(id)).join("\n").slice(0, 12000)}`,
           "Coordinate through this brief. Do not edit another worker's files, alter dependencies, start background commands, commit, publish or deploy. If scope is insufficient report the blocker; do not bypass file ownership through Bash. Run relevant checks. Report actual changes, commands and remaining issues. A separate agent will review and test.",
+          'Your final reply MUST be ONLY JSON: {"status":"completed|blocked|failed","summary":"actual changes and evidence, or the exact blocker and unfinished work"}. This workflow report format takes precedence over a generic subagent report template. Use completed only when the entire assigned implementation is done; a tool denial, missing dependency or insufficient file scope is blocked. A normal model response is not task completion.',
         ].join("\n\n"),
       }, childSignal);
       return result.report;
@@ -254,7 +284,15 @@ export class CollaborationWorkflowRunner {
     let blocked = false;
     for (let offset = 0; offset < jobs.length; offset += this.settings.maxConcurrency) {
       const batch = jobs.slice(offset, offset + this.settings.maxConcurrency);
-      const results = await Promise.allSettled(batch.map(job => this.call(job, signal)));
+      const stop = new AbortController();
+      const childSignal = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
+      let firstFailure: unknown;
+      const results = await Promise.allSettled(batch.map(job => this.call(job, childSignal).catch(error => {
+        firstFailure ??= error;
+        stop.abort();
+        throw error;
+      })));
+      if (firstFailure) throw firstFailure;
       for (let index = 0; index < results.length; index++) {
         const result = results[index], job = batch[index];
         if (result.status === "rejected") throw result.reason;

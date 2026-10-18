@@ -239,7 +239,7 @@ test("pt-BR keeps security disclosures and action semantics intact", () => {
 test("collaboration failures resolve to stage-specific transcript errors in every locale", () => {
   for (const [locale, catalog] of Object.entries(catalogs)) {
     const flat = flattenCatalog(catalog);
-    for (const code of ["COLLABORATION_PLAN_FAILED", "COLLABORATION_VERIFICATION_BLOCKED", "COLLABORATION_CHECKS_FAILED", "COLLABORATION_WORKFLOW_FAILED", "COLLABORATION_REVIEW_FAILED"]) {
+    for (const code of ["COLLABORATION_WORKSPACE_BLOCKED", "COLLABORATION_IMPLEMENTATION_BLOCKED", "COLLABORATION_PLAN_FAILED", "COLLABORATION_VERIFICATION_BLOCKED", "COLLABORATION_CHECKS_FAILED", "COLLABORATION_WORKFLOW_FAILED", "COLLABORATION_REVIEW_FAILED"]) {
       assert.equal(typeof flat[`errors.${code}`], "string", `${locale}: ${code}`);
       assert.notEqual(flat[`errors.${code}`], flat["chat.responseFailed"]);
       assert.equal(flat[`worktree.errors.${code}`], undefined);

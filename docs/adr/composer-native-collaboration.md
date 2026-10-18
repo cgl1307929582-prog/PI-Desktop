@@ -149,25 +149,44 @@ on the same file. Cyclic, unknown or unordered overlapping dependencies fail
 before coding. Builtin Write/Edit enforce each task's declared exact file scope.
 Shell permissions remain host-owned; file ownership is not a shell sandbox.
 
-Each check returns structured evidence. Source review requires an observed successful
-Read of current files; listing filenames alone cannot pass. Its verdict covers source
-correctness, while the separate Test stage owns command execution.
-Test verification additionally requires observed Bash results with exit code zero.
-A claim without executed commands cannot pass. Actionable source defects or
-executed failing tests produce a fresh repair plan, followed by coding and both
-checks, at most twice. An inconclusive report, malformed report, missing source
-reads, missing command evidence or unavailable executable blocks verification
-immediately without starting another code repair. If any required check is
-blocked, preserve all findings and command evidence, including failures from
-other checks; none are treated as a pass. Resolve the reported prerequisites
-before starting a fresh run. Verifiers read project instructions and reuse the
-documented test runner and existing project environment; they do not install
-dependencies or edit source/tests to bypass a blocker. Provider failures and
-unresolved checks still block successful delivery. Read-only
-requests and the review preset use only the read-only analyst. Direct parent
-Task calls cannot bypass a selected structured workflow. Stop aborts native
-children and prevents later stages. Repeated workflow calls within one turn
-return the same result rather than repeating edits.
+Each check returns structured evidence. Source review requires a successful Read
+of current files against the original task. It does not invent a requirement for
+a clean tree or a pre-change dirty-workspace snapshot; explicitly requested scope
+audits remain required. An inconclusive source verdict gets one fresh clarification
+per check, retaining the earlier report. Missing required evidence still blocks;
+no verdict is changed to pass by matching report wording. Test owns command execution.
+
+Test requires observed Bash results. A real nonzero exit is a failing check even
+when the host marks the tool `TOOL_FAILED`; it can trigger at most two code-repair
+rounds. Missing prerequisites stop without speculative code edits. All observed
+commands are retained. A later successful run of the identical command can resolve
+its earlier failure. Cross-runtime replacement is limited to unavailable launchers
+(exit 126/127 or a recognized Go launcher version error), with the same cwd, test
+runner, arguments and selectors. A real version-specific failure cannot be cleared
+by another interpreter, a narrower test or an unrelated successful command.
+Missing, denied or truncated evidence never passes. Verifiers reuse project runners
+and environments without installing dependencies or modifying tests.
+
+Deep plan review judges coverage before implementation, not whether planned fixes
+already exist. A rejected plan gets at most two revisions and independent reviews
+before any writer starts. Planning format corrections retain their separate bound.
+Plans may use `tasks: []` when only verification remains; nonempty original acceptance
+criteria and independent Review/Test evidence remain mandatory.
+
+Independent coding refills free slots immediately when dependencies are satisfied.
+A worker failure stops scheduling, aborts siblings and waits for every started child
+to settle. Stop also covers worktree preparation; file ownership guards survive
+until child tools and cancellation acknowledgement have completed. Direct Task
+calls cannot bypass a structured workflow. Read-only requests/presets keep their
+existing restrictions.
+
+Ordinary repeated workflow calls return the settled result. After failed verification,
+`retry: "verify"` with a concrete `retryReason` permits one fresh Review/Test attempt
+in the same turn, without writers or more repair rounds. The original task, acceptance,
+preset, model pins and read-only restrictions are frozen; replacement task text cannot
+narrow them. Planning/coding failures and cancellation cannot use this shortcut.
+A later user turn rechecks current files and may plan verification only. Error cards
+distinguish plan rejection, verification blockers, failed checks and execution failure.
 
 Stage progress, plans, commands and results are recorded in ordinary tool history.
 Children remain native Tasks in the current conversation; no Worker session or

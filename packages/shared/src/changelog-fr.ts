@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Relancez la vérification sans répéter les modifications, révisez les plans rejetés et lancez les sous-tâches prêtes sans masquer les échecs de tests.",
       "Choisissez automatiquement le workflow et les modèles de développement par tâche, avec des préférences et un verrouillage propres à chaque conversation.",
       "Le modèle principal décide quand collaborer : le mode intelligent traite directement les petites modifications et ne lance des sous-agents que si nécessaire.",
       "Des workflows enregistrés avec planification, modèles dédiés au frontend et au backend, revue indépendante, tests et corrections limitées.",

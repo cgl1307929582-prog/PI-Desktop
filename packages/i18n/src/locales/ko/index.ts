@@ -2821,6 +2821,11 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     phase: { idle: "꺼짐", preparing: "준비 중", "acquiring-mic": "마이크 대기 중", negotiating: "협상 중", connecting: "연결 중…", connected: "연결됨", reconnecting: "재연결 중", closing: "종료 중…", ended: "종료됨", failed: "중지됨" },
   },
   errors: {
+    COLLABORATION_PLAN_FAILED: "협업 계획을 수정해야 합니다. 세부 정보를 확인한 뒤 계속하세요.",
+    COLLABORATION_VERIFICATION_BLOCKED: "검증이 완료되지 않았습니다. 세부 정보의 선행 조건을 해결한 뒤 계속하세요.",
+    COLLABORATION_CHECKS_FAILED: "제한된 수정 시도 후에도 검토 또는 테스트가 실패했습니다. 세부 정보를 확인하세요.",
+    COLLABORATION_WORKFLOW_FAILED: "협업 워크플로가 중단되었습니다. 세부 정보에서 해당 단계를 확인하세요.",
+    COLLABORATION_REVIEW_FAILED: "최근 변경 사항이 아직 독립 검토를 통과하지 못했습니다.",
     COMPOSER_MCP_UNAVAILABLE: "선택한 MCP 서버의 연결이 끊겼거나 현재 프로젝트에서 사용할 수 없습니다. 다시 연결하고 선택하세요.",
     COMPOSER_MCP_REQUEST_REQUIRED: "MCP 서버 또는 도구를 선택한 뒤 작업 내용을 입력하거나 첨부 파일을 추가하세요.",
     HOST_UNAVAILABLE: "로컬 서비스를 사용할 수 없습니다",

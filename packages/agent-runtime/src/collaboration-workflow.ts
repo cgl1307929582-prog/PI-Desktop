@@ -4,6 +4,9 @@ import {
   COLLABORATION_VERIFIER, type CollaborationSettings,
 } from "@pi-desktop/shared";
 
+import { parseWorkflowJson as parseJson, verificationVerdict as verdict, VERIFICATION_REPORT as REPORT, SOURCE_REVIEW, PLAN_REVIEW } from "./collaboration-workflow-evidence.js";
+import { scheduleWorkflowTasks } from "./collaboration-workflow-scheduler.js";
+
 export type WorkflowTask = {
   id: string;
   role: "frontend" | "backend" | "assist" | "primary" | "collaboration";
@@ -13,7 +16,7 @@ export type WorkflowTask = {
 };
 export type WorkflowPlan = { summary: string; acceptance: string[]; tasks: WorkflowTask[] };
 export type WorkflowJob = { id: string; phase: string; agent: string; task: string; files?: string[] };
-export type WorkflowCommand = { command: string; exitCode: number | null; ok: boolean };
+export type WorkflowCommand = { command: string; exitCode: number | null; ok: boolean; denied?: boolean; truncated?: boolean; failureKind?: "runtime-unavailable" };
 export type WorkflowDelegateResult = {
   status: string; report: string; toolCalls: number; readCalls: number; commands: WorkflowCommand[];
 };
@@ -26,16 +29,14 @@ export type WorkflowResult = {
   preset: string; status: "running" | "completed" | "failed" | "cancelled";
   phase: string; stages: WorkflowStage[]; plan?: WorkflowPlan; repairRounds: number;
   error?: string;
+  failureCode?: "COLLABORATION_PLAN_FAILED" | "COLLABORATION_VERIFICATION_BLOCKED" | "COLLABORATION_CHECKS_FAILED" | "COLLABORATION_WORKFLOW_FAILED";
+  verificationRetry?: boolean;
   selection?: { mode: "auto" | "locked"; reason?: string };
 };
 type Delegate = (job: WorkflowJob, signal?: AbortSignal) => Promise<WorkflowDelegateResult>;
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
-}
-function parseJson(text: string): unknown {
-  if (text.length > 48_000) throw new Error("Workflow result exceeded its size limit.");
-  return JSON.parse(text.trim().replace(/^\x60\x60\x60(?:json)?\s*\n([\s\S]*?)\n\x60\x60\x60$/, "$1"));
 }
 function strings(value: unknown, max: number, length: number): value is string[] {
   return Array.isArray(value) && value.length <= max
@@ -48,7 +49,7 @@ export function parseWorkflowPlan(text: string, maxTasks = 16): WorkflowPlan {
   const value = parseJson(text);
   if (!object(value) || typeof value.summary !== "string" || !value.summary.trim() || value.summary.length > 4000
     || !strings(value.acceptance, 20, 1000) || !value.acceptance.length
-    || !Array.isArray(value.tasks) || !value.tasks.length || value.tasks.length > maxTasks) {
+    || !Array.isArray(value.tasks) || value.tasks.length > maxTasks) {
     throw new Error("Invalid workflow plan: a summary, acceptance criteria and bounded task list are required.");
   }
   const tasks: WorkflowTask[] = value.tasks.map((raw, index) => {
@@ -117,32 +118,6 @@ export function assertWorkflowWritePath(files: string[], path: unknown, workspac
   }
 }
 
-type Verification = { verdict: "pass" | "fail" | "inconclusive"; reason?: string };
-
-function verdict(result: WorkflowDelegateResult, tests = false): Verification {
-  try {
-    const report = parseJson(result.report);
-    if (result.status !== "completed" || !object(report)
-      || typeof report.verdict !== "string" || !["pass", "fail", "inconclusive"].includes(report.verdict)
-      || typeof report.summary !== "string" || !report.summary.trim()) {
-      return { verdict: "inconclusive", reason: "A completed, structured verification report is required." };
-    }
-    if (report.verdict === "inconclusive") return { verdict: "inconclusive" };
-    if (!result.toolCalls || (tests ? !result.commands.length : !result.readCalls)) {
-      return { verdict: "inconclusive", reason: tests
-        ? "No executed test commands were observed." : "No successful source Read was observed." };
-    }
-    if (tests && result.commands.some(command => command.exitCode === null
-      || command.exitCode === 126 || command.exitCode === 127)) {
-      return { verdict: "inconclusive", reason: "A command could not execute or did not provide an exit code." };
-    }
-    return { verdict: report.verdict === "fail"
-      || (tests && result.commands.some(command => !command.ok || command.exitCode !== 0)) ? "fail" : "pass" };
-  } catch { return { verdict: "inconclusive", reason: "The verification report is not valid JSON." }; }
-}
-const REPORT = 'Return one JSON object: {"verdict":"pass"|"fail"|"inconclusive","summary":"specific findings and evidence"}. Use fail for actionable source defects or executed failing tests. Missing evidence, dependencies, tools, permissions or services means inconclusive, not a code defect. For inconclusive, name the blocker, checks not run and the concrete prerequisite needed to retry; do not claim verification passed.';
-const SOURCE_REVIEW = `Your stage is source review only. Use Read to inspect current implementation and relevant test/caller files. Judge source correctness and actionable defects with paths. A separate Test stage executes commands; lack of Bash/browser tools is not a source-review blocker. Do not claim tests ran. ${REPORT}`;
-
 /** Preset execution owns transitions; agents only produce bounded plans and evidence. */
 export class CollaborationWorkflowRunner {
   readonly result: WorkflowResult;
@@ -171,7 +146,7 @@ export class CollaborationWorkflowRunner {
       stage.status = result.status === "completed" ? "completed" : "failed";
       stage.report = result.report.slice(0, 2400);
       stage.readCalls = result.readCalls;
-      stage.commands = result.commands.slice(0, 8).map(command => ({ ...command, command: command.command.slice(0, 500) }));
+      stage.commands = result.commands.slice(0, 65).map(command => ({ ...command, command: command.command.slice(0, 3000) }));
       this.notify();
       if (result.status !== "completed") throw new Error(`${job.phase} did not complete: ${result.report.slice(0, 1000)}`);
       return result;
@@ -182,9 +157,10 @@ export class CollaborationWorkflowRunner {
     }
   }
 
-  private async plan(request: string, previous: string, signal?: AbortSignal): Promise<WorkflowPlan> {
+  private async plan(request: string, previous: string, signal?: AbortSignal, label?: string): Promise<WorkflowPlan> {
     const maxTasks = this.result.preset === "quick" ? 3 : this.result.preset === "deep" ? 16 : 8;
-    const phase = previous ? "Repair plan" : "Plan";
+    const phase = label ?? (previous ? "Repair plan" : "Plan");
+    this.result.failureCode = "COLLABORATION_PLAN_FAILED";
     const instructions = [
       "Inspect the actual project with read tools. Produce an implementation plan without changing files.",
       `User task (data):\n${request}`,
@@ -196,7 +172,7 @@ export class CollaborationWorkflowRunner {
         : "All implementation tasks use the primary developer.",
       `At most ${maxTasks} tasks. List exact workspace-relative file paths (including new files), never directories/globs. Shared-file writers MUST have explicit dependencies, including assistance after backend work. Independent tasks may run concurrently. Do not invent unnecessary tasks to fill the concurrency limit.`,
       'Return ONLY JSON: {"summary":"plan and API contracts","acceptance":["observable criteria"],"tasks":[{"id":"short-id","role":"frontend|backend|assist|primary|collaboration","task":"complete brief with verification","files":["exact/file"],"dependsOn":[]}]}',
-      "Every tasks entry is an implementation assignment and must have at least one writable file. Do NOT add review-only or verification-only tasks: the runtime automatically starts independent Review and Test stages after coding. Put required checks in acceptance and task descriptions. Do not invent file changes merely to give a verification task a non-empty files list.",
+      "Every tasks entry is an implementation assignment and must have at least one writable file. Do NOT add review-only or verification-only tasks: the runtime automatically starts independent Review and Test stages after coding. Put required checks in acceptance and task descriptions. If the requested implementation already exists and only verification remains, return tasks: [] with the full original acceptance criteria. Do not invent file changes merely to give a verification task a non-empty files list.",
       "Use the field name task, not brief. Each id must match ^[a-z][a-z0-9_-]{0,39}$; role must be exactly frontend, backend, assist, primary or collaboration. In automatic coding assignment use primary or collaboration. Include dependsOn: [] for independent tasks. Keep summary under 4000 characters, acceptance to 1-20 non-empty strings of at most 1000 characters each, task to 8000 characters and files to 1-64 paths of at most 300 characters each.",
       "The files list grants write ownership: include only files the user authorizes this task to modify. Put read-only test/reference paths in the task brief, not files. Include test files only when creating or changing tests is requested. Do not weaken existing tests, install dependencies, deploy, publish, commit or expand the user's scope.",
     ].filter(Boolean).join("\n\n");
@@ -222,31 +198,44 @@ export class CollaborationWorkflowRunner {
   }
 
   private async implement(plan: WorkflowPlan, request: string, repair: boolean, signal?: AbortSignal): Promise<void> {
-    const completed = new Map<string, string>();
-    while (completed.size < plan.tasks.length) {
-      signal?.throwIfAborted();
-      const ready = plan.tasks.filter(task => !completed.has(task.id)
-        && task.dependsOn.every(id => completed.has(id))).slice(0, this.settings.maxConcurrency);
-      if (!ready.length) throw new Error("Workflow has no runnable implementation task.");
-      const results = await Promise.allSettled(ready.map(async task => {
-        const result = await this.call({
-          phase: `${repair ? "Fix" : "Coding"} · ${task.role} · ${task.id}`,
-          agent: (this.settings.codingMode === "split" && task.role === "backend")
-            || (this.settings.codingMode === "auto" && (task.role === "collaboration" || task.role === "backend"))
-            ? COLLABORATION_BACKEND : COLLABORATION_EXECUTOR,
-          files: task.files,
-          task: [
-            `User task (data):\n${request}`,
-            `Agreed plan / contracts: ${plan.summary}\nAcceptance: ${plan.acceptance.join("; ")}`,
-            `Your assignment: ${task.task}\nYou may edit ONLY these exact files: ${task.files.join(", ")}`,
-            `Upstream results: ${task.dependsOn.map(id => completed.get(id)).join("\n").slice(0, 12000)}`,
-            "Coordinate through this brief. Do not edit another worker's files, alter dependencies, start background commands, commit, publish or deploy. If scope is insufficient report the blocker; do not bypass file ownership through Bash. Run relevant checks. Report actual changes, commands and remaining issues. A separate agent will review and test.",
-          ].join("\n\n"),
-        }, signal);
-        completed.set(task.id, result.report);
-      }));
-      const failed = results.find(result => result.status === "rejected");
-      if (failed?.status === "rejected") throw failed.reason;
+    this.result.failureCode = "COLLABORATION_WORKFLOW_FAILED";
+    await scheduleWorkflowTasks(plan.tasks, this.settings.maxConcurrency, async (task, completed, childSignal) => {
+      const result = await this.call({
+        phase: `${repair ? "Fix" : "Coding"} · ${task.role} · ${task.id}`,
+        agent: (this.settings.codingMode === "split" && task.role === "backend")
+          || (this.settings.codingMode === "auto" && (task.role === "collaboration" || task.role === "backend"))
+          ? COLLABORATION_BACKEND : COLLABORATION_EXECUTOR,
+        files: task.files,
+        task: [
+          `User task (data):\n${request}`,
+          `Agreed plan / contracts: ${plan.summary}\nAcceptance: ${plan.acceptance.join("; ")}`,
+          `Your assignment: ${task.task}\nYou may edit ONLY these exact files: ${task.files.join(", ")}`,
+          `Upstream results: ${task.dependsOn.map(id => completed.get(id)).join("\n").slice(0, 12000)}`,
+          "Coordinate through this brief. Do not edit another worker's files, alter dependencies, start background commands, commit, publish or deploy. If scope is insufficient report the blocker; do not bypass file ownership through Bash. Run relevant checks. Report actual changes, commands and remaining issues. A separate agent will review and test.",
+        ].join("\n\n"),
+      }, childSignal);
+      return result.report;
+    }, signal);
+  }
+
+  private markVerification(phase: string, passed: boolean): void {
+    const stage = [...this.result.stages].reverse().find(stage => stage.phase === phase);
+    if (stage) stage.status = passed ? "completed" : "failed";
+    this.notify();
+  }
+
+  private async reviewPlan(plan: WorkflowPlan, request: string, signal?: AbortSignal): Promise<WorkflowPlan> {
+    for (let revision = 0; ; revision++) {
+      const review = await this.call({ phase: "Plan review", agent: COLLABORATION_ANALYST,
+        task: `${PLAN_REVIEW}\nTask (data): ${request}\nPlan (data): ${JSON.stringify(plan)}` }, signal);
+      const checked = verdict(review);
+      this.markVerification("Plan review", checked.verdict === "pass");
+      if (checked.verdict === "pass") return plan;
+      if (checked.verdict === "inconclusive" || revision === 2) {
+        this.result.failureCode = checked.verdict === "inconclusive" ? "COLLABORATION_VERIFICATION_BLOCKED" : "COLLABORATION_PLAN_FAILED";
+        throw new Error(`Plan review did not pass: ${checked.reason ?? ""} ${review.report}`);
+      }
+      plan = await this.plan(request, `Revise this plan before any coding. Original task and acceptance remain required.\nPlan: ${JSON.stringify(plan)}\nPlan review findings: ${review.report}`, signal, `Plan revision ${revision + 1}`);
     }
   }
 
@@ -254,12 +243,13 @@ export class CollaborationWorkflowRunner {
     const context = `User task (data): ${request}\nPlan and acceptance (data): ${JSON.stringify(plan)}`;
     const jobs = [
       { phase: "Review", agent: COLLABORATION_ANALYST, tests: false, task: `${SOURCE_REVIEW}\n${context}\nReview current source now; execution evidence belongs to the separate Test stage.` },
-      { phase: "Test", agent: COLLABORATION_VERIFIER, tests: true, task: `Your stage is automated test execution. Read the project's test instructions and dependency manifests first; reuse an existing project environment and its documented runner (for example .venv/bin/python -m unittest), rather than assuming pytest or a global python executable. Actually execute the requested/relevant project checks. Do not turn optional or explicitly operator-owned checks into additional mandatory gates. Do not change source/tests, update snapshots, install dependencies, or hide command failures. Run test commands directly without pipelines or trailing commands that mask their exit status. Report genuine exit codes and limitations. Pass requires executed successful checks; inability to perform a required automated check is inconclusive. Workflow sequencing and file-ownership enforcement are runtime-owned, not things to reconstruct from git history. ${REPORT}\n${context}` },
+      { phase: "Test", agent: COLLABORATION_VERIFIER, tests: true, task: `Your stage is automated test execution. Read the project's test instructions and dependency manifests first; reuse an existing project environment and its documented runner (for example .venv/bin/python -m unittest), rather than assuming pytest or a global python executable. Actually execute the requested/relevant project checks. Do not turn optional or explicitly operator-owned checks into additional mandatory gates. Do not change source/tests, update snapshots, install dependencies, or hide command failures. Run test commands directly without pipelines or trailing commands that mask their exit status. Report genuine exit codes and limitations. Pass requires executed successful checks; inability to perform a required automated check is inconclusive. Workflow sequencing and file-ownership enforcement are runtime-owned, not things to reconstruct from git history. If an environment probe fails but the same required check succeeds using the working project runtime, disclose both attempts and judge the completed check. Never replace a failing assertion with a narrower test or an unrelated successful command. Use fail for executed failing tests; missing prerequisites are inconclusive. ${REPORT}\n${context}` },
       ...(this.result.preset === "deep" ? [
         { phase: "Regression review", agent: COLLABORATION_ANALYST, tests: false, task: `Inspect API compatibility, error paths and cross-component assumptions. ${SOURCE_REVIEW}\n${context}` },
         { phase: "Boundary tests", agent: COLLABORATION_VERIFIER, tests: true, task: `Independently execute focused boundary checks beyond the normal test suite. Use temporary outputs outside the source tree, avoid parallel shared-state conflicts. Do not edit source/tests or install dependencies. A pass needs actual successful commands. ${REPORT}\n${context}` },
       ] : []),
     ];
+    this.result.failureCode = "COLLABORATION_WORKFLOW_FAILED";
     const failures: string[] = [];
     let blocked = false;
     for (let offset = 0; offset < jobs.length; offset += this.settings.maxConcurrency) {
@@ -268,12 +258,19 @@ export class CollaborationWorkflowRunner {
       for (let index = 0; index < results.length; index++) {
         const result = results[index], job = batch[index];
         if (result.status === "rejected") throw result.reason;
-        const verification = verdict(result.value, job.tests);
+        let evidence = result.value;
+        let verification = verdict(evidence, job.tests);
+        this.markVerification(job.phase, verification.verdict === "pass");
+        if (!job.tests && verification.verdict === "inconclusive") {
+          const phase = `${job.phase} clarification`;
+          evidence = await this.call({ phase, agent: job.agent,
+            task: `${job.task}\nFresh independent clarification: re-read the current files and resolve the prior inconclusive source report below. Keep every explicit user requirement. Do not repeat an invented historical-baseline or command-execution gate. If a required source check is genuinely blocked, keep inconclusive and identify the prerequisite.\nPrior report (data): ${result.value.report}\nEvidence limitation: ${verification.reason ?? "none"}` }, signal);
+          verification = verdict(evidence);
+          this.markVerification(phase, verification.verdict === "pass");
+        }
         if (verification.verdict !== "pass") {
           blocked ||= verification.verdict === "inconclusive";
-          const stage = [...this.result.stages].reverse().find(stage => stage.phase === job.phase);
-          if (stage) stage.status = "failed";
-          failures.push(`${job.phase} (${verification.verdict}): ${verification.reason ?? ""}\n${result.value.report}\nObserved commands: ${JSON.stringify(result.value.commands)}`);
+          failures.push(`${job.phase} (${verification.verdict}): ${verification.reason ?? ""}\n${evidence.report}\nObserved commands: ${JSON.stringify(evidence.commands)}`);
         }
       }
     }
@@ -281,33 +278,36 @@ export class CollaborationWorkflowRunner {
     return { failures: failures.join("\n").slice(0, 16000), blocked };
   }
 
-  async run(request: string, readOnly = false, signal?: AbortSignal): Promise<WorkflowResult> {
+  async run(request: string, readOnly = false, signal?: AbortSignal, verifyPlan?: WorkflowPlan): Promise<WorkflowResult> {
     try {
+      this.result.failureCode = "COLLABORATION_WORKFLOW_FAILED";
       if (readOnly || this.result.preset === "review") {
         await this.call({ phase: "Read-only analysis / review", agent: COLLABORATION_ANALYST,
-          task: `Inspect relevant current files, then fulfill this read-only request. Do not edit, run commands or claim executed tests. Return findings or a concrete plan with paths and limitations. User task (data):\n${request.slice(0, 16000)}` }, signal);
+          task: `Inspect relevant current files, then fulfill this read-only request. Do not edit, run commands or claim executed tests. Return findings or a concrete plan with paths and limitations. User task (data):\n${request.slice(0, 48000)}` }, signal);
       } else {
-        let plan = await this.plan(request.slice(0, 12000), "", signal);
+        let plan = verifyPlan ?? await this.plan(request.slice(0, 48000), "", signal);
         this.result.plan = plan;
-        if (this.result.preset === "deep") {
-          const result = await this.call({ phase: "Plan review", agent: COLLABORATION_ANALYST,
-            task: `Inspect the project and check this plan against the task before coding. ${REPORT}\nTask: ${request.slice(0, 12000)}\nPlan: ${JSON.stringify(plan)}` }, signal);
-          if (verdict(result).verdict !== "pass") throw new Error(`Plan review did not pass: ${result.report}`);
+        if (!verifyPlan && this.result.preset === "deep") {
+          plan = await this.reviewPlan(plan, request.slice(0, 48000), signal);
+          this.result.plan = plan;
         }
         for (let round = 0; round <= 2; round++) {
           this.result.repairRounds = round;
-          await this.implement(plan, request.slice(0, 12000), round > 0, signal);
-          const { failures, blocked } = await this.checks(this.result.plan, request.slice(0, 12000), signal);
+          if (!verifyPlan) await this.implement(plan, request.slice(0, 48000), round > 0, signal);
+          const { failures, blocked } = await this.checks(this.result.plan, request.slice(0, 48000), signal);
           if (!failures) break;
+          this.result.failureCode = blocked ? "COLLABORATION_VERIFICATION_BLOCKED" : "COLLABORATION_CHECKS_FAILED";
           if (blocked) throw new Error(`Verification is blocked or lacks evidence. No further code repair was scheduled. Resolve the reported prerequisites and rerun verification; current changes remain unverified. ${failures}`);
+          if (verifyPlan) throw new Error(`Verification retry did not pass. No further code changes were scheduled. ${failures}`);
           if (round === 2) throw new Error(`Review/tests remain unverified after two repair rounds. ${failures}`);
-          plan = await this.plan(request.slice(0, 12000),
+          plan = await this.plan(request.slice(0, 48000),
             `Original plan: ${JSON.stringify(this.result.plan)}\nRepair only these failures: ${failures}`, signal);
         }
       }
       signal?.throwIfAborted();
       this.result.status = "completed";
       this.result.phase = "Complete";
+      delete this.result.failureCode;
     } catch (error) {
       this.result.status = signal?.aborted ? "cancelled" : "failed";
       this.result.error = error instanceof Error ? error.message : String(error);

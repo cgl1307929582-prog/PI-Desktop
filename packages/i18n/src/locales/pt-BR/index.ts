@@ -2753,6 +2753,11 @@ export const ptBR = {
     phase: { idle: "Desativada", preparing: "Preparando", "acquiring-mic": "Aguardando microfone", negotiating: "Negociando", connecting: "Conectando…", connected: "Conectado", reconnecting: "Reconectando", closing: "Encerrando…", ended: "Encerrada", failed: "Interrompida" },
   },
   errors: {
+    COLLABORATION_PLAN_FAILED: "O plano de colaboração precisa de ajustes. Consulte os detalhes antes de continuar.",
+    COLLABORATION_VERIFICATION_BLOCKED: "A verificação está incompleta. Resolva o pré-requisito indicado e continue.",
+    COLLABORATION_CHECKS_FAILED: "A revisão ou os testes falharam após as tentativas de correção. Consulte os detalhes.",
+    COLLABORATION_WORKFLOW_FAILED: "O fluxo de colaboração foi interrompido. Consulte a etapa nos detalhes.",
+    COLLABORATION_REVIEW_FAILED: "As últimas alterações ainda não passaram pela revisão independente.",
     COMPOSER_MCP_UNAVAILABLE: "O servidor MCP selecionado está desconectado ou indisponível neste projeto. Reconecte-o e selecione-o novamente.",
     COMPOSER_MCP_REQUEST_REQUIRED: "Depois de escolher um servidor ou ferramenta MCP, informe uma tarefa ou adicione um anexo.",
     HOST_UNAVAILABLE: "O serviço local está indisponível",

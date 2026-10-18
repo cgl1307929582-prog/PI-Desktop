@@ -2878,6 +2878,11 @@ sklm: {
     phase: { idle: "关闭", preparing: "正在准备", "acquiring-mic": "等待麦克风", negotiating: "正在协商", connecting: "连接中…", connected: "已连接", reconnecting: "正在重连", closing: "正在结束…", ended: "已结束", failed: "已停止" },
   },
   errors: {
+    COLLABORATION_PLAN_FAILED: "协作计划仍需调整，展开详情后可继续。",
+    COLLABORATION_VERIFICATION_BLOCKED: "验证尚未完成。请先解决详情中的前置条件，再继续验证。",
+    COLLABORATION_CHECKS_FAILED: "审查或测试未通过，已停止自动修复。展开详情查看待修问题。",
+    COLLABORATION_WORKFLOW_FAILED: "协作流程已停止，展开详情查看中断的阶段。",
+    COLLABORATION_REVIEW_FAILED: "最新修改尚未通过独立审查。",
     COMPOSER_MCP_UNAVAILABLE: "所选 MCP 服务器已断开或在当前项目中不可用。请重新连接并选择。",
     COMPOSER_MCP_REQUEST_REQUIRED: "选择 MCP 服务器或工具后，请输入任务内容或添加附件。",
     HOST_UNAVAILABLE: "本地服务不可用",

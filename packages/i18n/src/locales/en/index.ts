@@ -2943,6 +2943,11 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     },
   },
   errors: {
+    COLLABORATION_PLAN_FAILED: "The collaboration plan needs revision. Expand details before continuing.",
+    COLLABORATION_VERIFICATION_BLOCKED: "Verification is incomplete. Resolve the prerequisite in the details, then continue.",
+    COLLABORATION_CHECKS_FAILED: "Review or tests still failed after bounded repair. Expand details to continue fixing.",
+    COLLABORATION_WORKFLOW_FAILED: "The collaboration workflow stopped. Expand details for the failed stage.",
+    COLLABORATION_REVIEW_FAILED: "The latest changes have not passed independent review.",
     COMPOSER_MCP_UNAVAILABLE: "The selected MCP server is disconnected or unavailable in this project. Reconnect it and select it again.",
     COMPOSER_MCP_REQUEST_REQUIRED: "Add task text or an attachment after selecting an MCP server or tool.",
     HOST_UNAVAILABLE: "The local service is unavailable",

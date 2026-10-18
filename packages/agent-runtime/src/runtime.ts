@@ -1,7 +1,8 @@
-import { selectCollaborationWorkflow } from "./collaboration-routing.js";
 import { collaborationSettings, collaborationPrompt, hasCollaborationWorkflow, COLLABORATION_ANALYST, COLLABORATION_EXECUTOR, COLLABORATION_VERIFIER, COLLABORATION_ROLE_NAMES, type CollaborationSettings } from "@pi-desktop/shared";
 import { CollaborationReview } from "./collaboration-review.js";
-import { CollaborationWorkflowRunner, assertWorkflowWritePath, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult, type WorkflowResult } from "./collaboration-workflow.js";
+import { assertWorkflowWritePath, type WorkflowJob, type WorkflowCommand, type WorkflowDelegateResult } from "./collaboration-workflow.js";
+import { workflowCommandEvidence } from "./collaboration-workflow-evidence.js";
+import { CollaborationWorkflowTurn } from "./collaboration-workflow-turn.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -1817,8 +1818,7 @@ export class DesktopAgentRuntime {
   private collaboration: CollaborationSettings;
   private collaborationReview = new CollaborationReview();
   private collaborationRequest = "";
-  private workflowResult?: WorkflowResult;
-  private workflowRunning = false;
+  private workflowTurn = new CollaborationWorkflowTurn();
   private workflowTasks = new Map<string, WorkflowJob>();
   private workflowDelegates = new Map<string, { job: WorkflowJob; commands: WorkflowCommand[]; readCalls: number }>();
   private subagentProviders: Record<string, RuntimeProviderConfig>;
@@ -3608,11 +3608,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const workflowDelegate = this.workflowDelegates.get(this.mutationOwners.get(toolCallId) ?? "");
         if (toolName === "Read" && workflowDelegate && result.ok && !result.isError && !result.denied) workflowDelegate.readCalls += 1;
         if (toolName === "Bash" && workflowDelegate && workflowDelegate.commands.length < 64) {
-          workflowDelegate.commands.push({
-            command: isRecord(params) && typeof params.command === "string" ? params.command.slice(0, 3000) : "",
-            exitCode: isRecord(result.content) && typeof result.content.exitCode === "number" ? result.content.exitCode : null,
-            ok: result.ok && !result.isError && !result.denied,
-          });
+          workflowDelegate.commands.push(workflowCommandEvidence(
+            isRecord(params) && typeof params.command === "string" ? params.command : "",
+            result.content, result.ok && !result.isError && !result.denied, result.denied === true,
+          ));
         } else if (toolName === "Bash" && workflowDelegate?.commands.length === 64) {
           workflowDelegate.commands.push({ command: "Command evidence limit exceeded; verification is inconclusive.", exitCode: null, ok: false });
         }
@@ -4702,7 +4701,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Set in `rebuildToolCatalog`, which owns every execution mode; repeated
       // here so the intent survives a tool built outside that path.
       executionMode: "parallel",
-      execute: async (toolCallId, params) => {
+      execute: async (toolCallId, params, signal) => {
+        const workflowSignal = this.workflowTasks.has(toolCallId) ? signal : undefined;
+        workflowSignal?.throwIfAborted();
         if (this.collaborationWorkflowEnabled() && !this.workflowTasks.has(toolCallId)) {
           return this.subagentToolError(toolCallId, "Use CollaborationWorkflow for this task. The selected workflow owns planning, implementation, review and tests.");
         }
@@ -4820,7 +4821,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const resumedProvider = resumedChain
           ? await this.resumedChainProvider(resumedChain, definition)
           : undefined;
-        if (this.disposed || this.runCancelled || this.turnHadError || resumeEpoch !== this.turnEpoch) {
+        if (this.disposed || this.runCancelled || this.turnHadError || workflowSignal?.aborted || resumeEpoch !== this.turnEpoch) {
           return this.subagentToolError(toolCallId, "The parent turn ended before delegation could resume.");
         }
         // Authorization may yield while a parallel Task starts this chain.
@@ -4886,8 +4887,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           } finally {
             this.pendingDelegationStarts -= 1;
           }
-          if (this.disposed || this.runCancelled || this.turnHadError || resumeEpoch !== this.turnEpoch) {
-            void this.settleDelegateWorktree(worktreeKey, false, delegationId);
+          if (this.disposed || this.runCancelled || this.turnHadError || workflowSignal?.aborted || resumeEpoch !== this.turnEpoch) {
+            await this.settleDelegateWorktree(worktreeKey, false, delegationId);
             return this.subagentToolError(toolCallId, "The parent turn ended before delegation could start.");
           }
         }
@@ -4947,6 +4948,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ...(resumedChain ? { resumedFrom: resume } : {}),
           ...(modelChangedFrom ? { modelChangedFrom } : {}),
         };
+        if (workflowSignal) {
+          const abortWorkflowTask = () => record.abort();
+          workflowSignal.addEventListener("abort", abortWorkflowTask, { once: true });
+          void completion.then(() => workflowSignal.removeEventListener("abort", abortWorkflowTask));
+          if (workflowSignal.aborted) record.abort();
+        }
         this.delegations.set(delegationId, record);
         const workflowJob = this.workflowTasks.get(toolCallId);
         if (workflowJob) this.workflowDelegates.set(delegationId, { job: workflowJob, commands: [], readCalls: 0 });
@@ -5456,9 +5463,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * aborts leftover delegates and returns without a resume prompt (D352).
    */
   private async resumeAfterDelegations(): Promise<void> {
-    if (this.workflowResult && this.workflowResult.status !== "completed" && !this.runCancelled && !this.turnHadError) {
+    if (this.workflowTurn.result && this.workflowTurn.result.status !== "completed" && !this.runCancelled && !this.turnHadError) {
       this.terminateParentTurn();
-      this.emit({ type: "error", error: { code: "COLLABORATION_WORKFLOW_FAILED", message: this.workflowResult.error ?? "The workflow did not complete.", retriable: true } });
+      this.emit({ type: "error", error: { code: this.workflowTurn.result.failureCode ?? "COLLABORATION_WORKFLOW_FAILED", message: this.workflowTurn.result.error ?? "The workflow did not complete.", retriable: true } });
       this.emit({ type: "turn_end" });
       this.emit({ type: "agent_end", messageIds: [] });
       return;
@@ -5560,7 +5567,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private collaborationRequiresDelegation(): boolean {
     return this.collaborationEnabled() && (
       this.collaboration.mode === "deep" || this.collaboration.workflow === "review" ||
-      this.workflowRunning || !!this.workflowResult ||
+      this.workflowTurn.running || !!this.workflowTurn.result ||
       [...this.delegations.values()].some(record => record.startedEpoch === this.turnEpoch)
     );
   }
@@ -5569,36 +5576,24 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return {
       name: "CollaborationWorkflow",
       label: "Collaboration workflow",
-      description: `${this.collaboration.mode === "auto" ? "Optional: decide whether collaboration materially helps first. Handle small tasks and their tests directly without this tool. When needed, run" : "Run"} the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use once for the complete task, including any direct edits already made. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
+      description: `${this.collaboration.mode === "auto" ? "Optional: decide whether collaboration materially helps first. Handle small tasks and their tests directly without this tool. When needed, run" : "Run"} the configured ${this.collaboration.workflow} workflow in this conversation: plan, scoped coding, fresh independent review and actual tests, with at most two repair rounds. Use for the complete task, including any direct edits already made. Repeated calls return the settled result. After a failed verification, retry=verify with retryReason runs one fresh verification without writers, preserving the original task, models, preset and acceptance. Resolve prerequisites first; do not retry unchanged environmental blockers. Model channels and coding assignments come from the collaboration menu. Simple questions do not require a workflow. Read-only requests must set readOnly=true.`,
       parameters: Type.Object({
         task: Type.String({ minLength: 1, maxLength: 16000, description: "Complete task, constraints, agreed API behavior and acceptance criteria." }),
         preset: Type.Optional(Type.Union([Type.Literal("quick"), Type.Literal("standard"), Type.Literal("deep"), Type.Literal("review")], { description: "Required for automatic selection: choose the smallest sufficient workflow. A manually locked preset cannot be changed." })),
         reason: Type.Optional(Type.String({ minLength: 1, maxLength: 500, description: "Required for automatic selection: briefly explain why this workflow fits the actual task." })),
         readOnly: Type.Optional(Type.Boolean({ description: "Analyze, plan or review without implementation or shell commands." })),
+        retry: Type.Optional(Type.Literal("verify", { description: "After failed checks, rerun the original Review/Test once without coding. Cannot replace the original task or acceptance." })),
+        retryReason: Type.Optional(Type.String({ minLength: 1, maxLength: 1000, description: "What prerequisite changed or which evidence issue warrants a fresh verification." })),
       }),
       execute: async (_toolCallId, params, signal, onUpdate) => {
-        if (this.workflowRunning) throw new Error("A collaboration workflow is already running.");
-        if (!isRecord(params) || typeof params.task !== "string" || !params.task.trim()) throw new Error("A workflow task is required.");
-        if (!this.workflowResult) {
-          const selected = selectCollaborationWorkflow(this.collaboration, params);
-          this.workflowRunning = true;
-          try {
-            const runner = new CollaborationWorkflowRunner(selected.settings,
-              (job, abortSignal) => this.runCollaborationTask(job, abortSignal),
-              (result) => {
-                this.workflowResult = { ...result, selection: selected.selection };
-                onUpdate?.({
-                  content: [{ type: "text", text: result.stages.map(stage => `${stage.status}: ${stage.phase}`).join("\n") }],
-                  details: { workflow: { ...result, selection: selected.selection, plan: undefined,
-                    stages: result.stages.map(stage => ({ id: stage.id, phase: stage.phase, agent: stage.agent, status: stage.status })) } },
-                });
-              });
-            this.workflowResult = { ...await runner.run(
-              `${this.collaborationRequest.slice(0, 12000)}\n\nTask brief: ${params.task}`,
-              params.readOnly === true, signal), selection: selected.selection };
-          } finally { this.workflowRunning = false; }
-        }
-        const result = this.workflowResult;
+        if (!isRecord(params)) throw new Error("A workflow task is required.");
+        const result = await this.workflowTurn.execute(this.collaboration, params, this.collaborationRequest,
+          (job, abortSignal) => this.runCollaborationTask(job, abortSignal),
+          (result) => onUpdate?.({
+            content: [{ type: "text", text: result.stages.map(stage => `${stage.status}: ${stage.phase}`).join("\n") }],
+            details: { workflow: { ...result, plan: undefined,
+              stages: result.stages.map(stage => ({ id: stage.id, phase: stage.phase, agent: stage.agent, status: stage.status })) } },
+          }), signal);
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
           details: { workflow: result },
@@ -5641,7 +5636,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         readCalls: this.workflowDelegates.get(record.delegationId)?.readCalls ?? 0,
         commands: this.workflowDelegates.get(record.delegationId)?.commands ?? [],
       };
+    } catch (error) {
+      record?.abort();
+      throw error;
     } finally {
+      // Keep file ownership and evidence guards until the child and host tools settle.
+      if (record) await record.completion;
       this.workflowTasks.delete(toolCallId);
       if (record) {
         record.reportDelivered = true;
@@ -9039,7 +9039,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     durableTurnId: string,
   ): Promise<{ turnId: string }> {
     this.collaborationReview = new CollaborationReview();
-    this.workflowResult = undefined;
+    this.workflowTurn = new CollaborationWorkflowTurn();
     this.workflowTasks.clear();
     this.workflowDelegates.clear();
     this.collaborationRequest = typeof input === "string" ? input : input.text;

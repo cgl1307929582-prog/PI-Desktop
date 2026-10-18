@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Zusammenarbeitsprüfungen ohne erneute Änderungen wiederholen, abgelehnte Pläne überarbeiten und bereite Teilaufgaben sofort starten; echte Testfehler bleiben blockierend.",
       "Workflows und Entwicklungsmodelle automatisch je Aufgabe wählen; jede Unterhaltung speichert ihre eigene Auswahl und manuelle Sperre.",
       "Das Hauptmodell entscheidet im intelligenten Modus selbst: kleine Änderungen direkt bearbeiten und Unteragenten nur bei Bedarf starten.",
       "Gespeicherte Entwicklungsabläufe mit Planung, Modellzuweisung für Frontend und Backend, unabhängiger Prüfung, Tests und begrenzten Korrekturen.",

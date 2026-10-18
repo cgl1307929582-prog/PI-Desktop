@@ -2783,6 +2783,11 @@ sklm: {
     phase: { idle: "Desactivado", preparing: "Preparando", "acquiring-mic": "Esperando el micrófono", negotiating: "Negociando", connecting: "Conectando…", connected: "Conectado", reconnecting: "Reconectando", closing: "Finalizando…", ended: "Finalizado", failed: "Detenido" },
   },
   "errors": {
+    COLLABORATION_PLAN_FAILED: "El plan de colaboración necesita ajustes. Abre los detalles antes de continuar.",
+    COLLABORATION_VERIFICATION_BLOCKED: "La verificación está incompleta. Resuelve el requisito indicado y continúa.",
+    COLLABORATION_CHECKS_FAILED: "La revisión o las pruebas fallaron tras los intentos de reparación. Consulta los detalles.",
+    COLLABORATION_WORKFLOW_FAILED: "El flujo de colaboración se detuvo. Consulta la etapa fallida en los detalles.",
+    COLLABORATION_REVIEW_FAILED: "Los últimos cambios no han superado la revisión independiente.",
     COMPOSER_MCP_UNAVAILABLE: "El servidor MCP seleccionado está desconectado o no está disponible en este proyecto. Vuelve a conectarlo y seleccionarlo.",
     COMPOSER_MCP_REQUEST_REQUIRED: "Después de elegir un servidor o una herramienta MCP, escribe una tarea o añade un archivo adjunto.",
     "HOST_UNAVAILABLE": "El servicio local no está disponible",

@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { CollaborationWorkflowRunner, parseWorkflowPlan, assertWorkflowWritePath,
   type WorkflowTask, type WorkflowDelegateResult, type WorkflowJob } from "./collaboration-workflow.js";
+import { workflowCommandEvidence } from "./collaboration-workflow-evidence.js";
 import type { CollaborationSettings } from "@pi-desktop/shared";
 
 const settings: CollaborationSettings = { mode: "auto", workflow: "standard", codingMode: "split",
@@ -207,7 +208,7 @@ it("failed tests trigger a fresh repair and both checks before completion", asyn
 it("does not accept a source-review verdict that only listed filenames", async () => {
   const runner = new CollaborationWorkflowRunner(settings, async job => {
     if (job.phase.includes("plan") || job.phase === "Plan") return result(plan([task("api", "backend")]));
-    if (job.phase === "Review") return { ...result(pass), readCalls: 0 };
+    if (job.phase.startsWith("Review")) return { ...result(pass), readCalls: 0 };
     return result(pass, job.phase === "Test" ? [testCommand] : []);
   }, () => {});
   const output = await runner.run("Fix the API.");
@@ -280,4 +281,132 @@ it("automatic coding assignment can give either area to either pinned developer"
   expect(jobs.find(job => job.phase.includes("frontend-help"))?.agent).toBe("collaboration-backend");
   expect(jobs.find(job => job.phase === "Review")?.agent).toBe("collaboration-analyst");
   expect(jobs.find(job => job.phase === "Test")?.agent).toBe("collaboration-verifier");
+});
+
+
+it("verifies already implemented work without inventing writable tasks", async () => {
+  const jobs: WorkflowJob[] = [];
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    jobs.push(job);
+    return result(job.phase === "Plan" ? plan([]) : pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  expect((await runner.run("The implementation is complete; verify the original requirements.")).status).toBe("completed");
+  expect(jobs.map(job => job.phase)).toEqual(["Plan", "Review", "Test"]);
+});
+
+it("revises a rejected deep plan before any writer starts", async () => {
+  const jobs: WorkflowJob[] = [];
+  let reviews = 0;
+  const runner = new CollaborationWorkflowRunner({ ...settings, workflow: "deep" }, async job => {
+    jobs.push(job);
+    if (job.phase === "Plan" || job.phase === "Plan revision 1") return result(plan([task("api", "backend")]));
+    if (job.phase === "Plan review") {
+      expect(jobs.some(item => item.phase.startsWith("Coding"))).toBe(false);
+      return result(++reviews === 1 ? '{"verdict":"fail","summary":"Plan must cover cancellation."}' : pass);
+    }
+    return result(pass, ["Test", "Boundary tests"].includes(job.phase) ? [testCommand] : []);
+  }, () => {});
+  const output = await runner.run("Implement the API including cancellation.");
+  expect(output.status).toBe("completed");
+  expect(reviews).toBe(2);
+  expect(jobs.find(job => job.phase === "Plan revision 1")?.task).toContain("Plan must cover cancellation");
+  expect(output.repairRounds).toBe(0);
+});
+
+it("gets a fresh source verdict for an inconclusive review without repeating coding or tests", async () => {
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase === "Plan") return result(plan([task("api", "backend")]));
+    if (job.phase === "Review") return result('{"verdict":"inconclusive","summary":"No source defects; missing historical dirty baseline."}');
+    if (job.phase === "Review clarification") {
+      expect(job.task).toContain("missing historical dirty baseline");
+      expect(job.task).toContain("explicitly requires");
+    }
+    return result(pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  const output = await runner.run("Fix the API.");
+  expect(output.status).toBe("completed");
+  expect(output.stages.filter(stage => stage.phase.startsWith("Coding"))).toHaveLength(1);
+  expect(output.stages.filter(stage => stage.phase === "Test")).toHaveLength(1);
+  expect(output.stages.find(stage => stage.phase === "Review")?.status).toBe("failed");
+  expect(output.stages.find(stage => stage.phase === "Review clarification")?.status).toBe("completed");
+});
+
+it("refills a free slot as soon as a dependency completes, without a batch barrier", async () => {
+  let finishSlow!: () => void;
+  const slow = new Promise<void>(resolve => { finishSlow = resolve; });
+  let dependentStarted!: () => void;
+  const started = new Promise<void>(resolve => { dependentStarted = resolve; });
+  const jobs: string[] = [];
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    jobs.push(job.phase);
+    if (job.phase === "Plan") return result(plan([task("slow"), task("api", "backend"), task("help", "assist", ["api.txt"], ["api"])]));
+    if (job.phase.endsWith("slow")) await slow;
+    if (job.phase.endsWith("help")) dependentStarted();
+    return result(pass, job.phase === "Test" ? [testCommand] : []);
+  }, () => {});
+  const running = runner.run("Implement independent UI and API with scoped API help.");
+  try {
+    await Promise.race([started, new Promise((_, reject) => setTimeout(() => reject(new Error("Ready dependent did not start")), 500))]);
+    expect(jobs).not.toContain("Review");
+  } finally { finishSlow(); }
+  expect((await running).status).toBe("completed");
+});
+
+it("accepts an observed successful equivalent toolchain retry and retains the failed attempt", async () => {
+  const commands = [
+    workflowCommandEvidence("cd backend && GOPROXY=off GOTOOLCHAIN=local go build ./...", { exitCode: 1, stderr: "go: go.mod requires go >= 1.27.2 (running go 1.26.5; GOTOOLCHAIN=local)" }, false),
+    { command: "cd backend && GOPROXY=off go build ./...", exitCode: 0, ok: true },
+  ];
+  const runner = new CollaborationWorkflowRunner(settings, async job => {
+    if (job.phase === "Plan") return result(plan([]));
+    return result(pass, job.phase === "Test" ? commands : []);
+  }, () => {});
+  const output = await runner.run("Verify the existing backend build.");
+  expect(output.status).toBe("completed");
+  expect(output.stages.find(stage => stage.phase === "Test")?.commands).toEqual(commands);
+});
+
+
+it("stops scheduling on worker failure and drains an aborted sibling before returning", async () => {
+  let fail!: () => void, cancelled!: () => void, finish!: () => void;
+  const failure = new Promise<void>(resolve => { fail = resolve; });
+  const cancellation = new Promise<void>(resolve => { cancelled = resolve; });
+  const pendingCleanup = new Promise<void>(resolve => { finish = resolve; });
+  const phases: string[] = [];
+  const runner = new CollaborationWorkflowRunner(settings, async (job, signal) => {
+    phases.push(job.phase);
+    if (job.phase === "Plan") return result(plan([task("first"), task("second"), task("never")]));
+    if (job.phase.endsWith("first")) { await failure; throw new Error("Writer failed"); }
+    if (job.phase.endsWith("second")) {
+      signal!.addEventListener("abort", cancelled, { once: true });
+      fail();
+      await pendingCleanup;
+      return result("Cancelled and drained");
+    }
+    throw new Error("Unexpected stage " + job.phase);
+  }, () => {});
+  let ended = false;
+  const running = runner.run("Implement independent files").finally(() => { ended = true; });
+  await cancellation;
+  expect(ended).toBe(false);
+  expect(phases.some(phase => phase.endsWith("never") || phase === "Review")).toBe(false);
+  finish();
+  const output = await running;
+  expect(output.status).toBe("failed");
+  expect(output.error).toContain("Writer failed");
+  expect(output.stages.every(stage => stage.status !== "running")).toBe(true);
+});
+
+it("bounds repeated plan rejection before coding and keeps genuine source blockers", async () => {
+  let reviews = 0;
+  const runner = new CollaborationWorkflowRunner({ ...settings, workflow: "deep" }, async job => {
+    if (job.phase === "Plan" || job.phase.startsWith("Plan revision")) return result(plan([task("api")]));
+    if (job.phase === "Plan review") { reviews++; return result('{"verdict":"fail","summary":"Plan still omits required cancellation handling."}'); }
+    throw new Error("No coding is allowed before plan approval");
+  }, () => {});
+  const output = await runner.run("Fix the existing cancellation defect.");
+  expect(output.status).toBe("failed");
+  expect(output.failureCode).toBe("COLLABORATION_PLAN_FAILED");
+  expect(reviews).toBe(3);
+  expect(output.stages.every(stage => stage.agent === "collaboration-analyst")).toBe(true);
 });

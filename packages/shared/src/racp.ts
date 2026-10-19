@@ -14,6 +14,7 @@
 import Type from "typebox";
 
 import { ErrorCodes } from "./errors.js";
+import { RACP_HOSTLINK_SCHEMAS } from "./racp-hostlink.js";
 import type { AgentEvent } from "./types.js";
 
 type Static<T extends Type.TSchema> = Type.Static<T>;
@@ -603,6 +604,8 @@ export const RACP_OPERATIONS = {
   "project/register": { role: "owner", profile: "remote-host", mutation: true },
   /** List directories under a Host path, for the remote folder picker; bounded and owner-only. */
   "project/browse": { role: "owner", profile: "remote-host", mutation: false },
+  /** A paired phone registers its own APNs token for redacted push (D663, profile §7). */
+  "push/register": { role: "controller", profile: "remote-host", mutation: true },
 } as const satisfies Record<string, RacpOperationSpec>;
 export type RacpOperation = keyof typeof RACP_OPERATIONS;
 
@@ -891,5 +894,6 @@ export const RACP_SCHEMAS = {
   RemoteError: RacpRemoteErrorSchema,
   Limits: RacpLimitsSchema,
   Policy: RacpPolicySchema,
+  ...RACP_HOSTLINK_SCHEMAS,
 } as const;
 export type RacpSchemaName = keyof typeof RACP_SCHEMAS;

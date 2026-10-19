@@ -1,0 +1,74 @@
+/* Settings → Mobile access (D663). */
+.settings-mobile-enroll {
+  display: grid;
+  gap: 12px;
+  padding: 2px;
+}
+
+.settings-mobile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-mobile-error {
+  color: var(--ds-error);
+}
+
+.settings-mobile-pairing {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-mobile-qr {
+  flex: none;
+  border-radius: var(--radius-xs);
+}
+
+.settings-mobile-pairing-text {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.settings-mobile-device-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-mobile-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.settings-mobile-device-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-mobile-device-name {
+  overflow: hidden;
+  font-size: var(--text-md-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .settings-mobile-pairing,
+  .settings-mobile-device {
+    flex-wrap: wrap;
+  }
+}

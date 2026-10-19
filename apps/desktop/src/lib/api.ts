@@ -2,6 +2,10 @@ import { projectPlanHistory } from "./plan-history";
 import { guardRemoteInvocation } from "./remote-ipc-safety";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
 import type {
+  MobileAccessEnrollRequest,
+  MobileAccessPairing,
+  MobileAccessStatus,
+  MobileDeviceSummary,
   ConfigSyncTestInput,
   ConfigSyncTestResult,
   ScheduledTaskRun,
@@ -1803,6 +1807,24 @@ export const api = {
   onNotificationSound: (listener: () => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.notificationSound, () => listener());
+  },
+
+  // --- Mobile access (D663) --------------------------------------------------
+  mobileAccessStatus: () => invoke<MobileAccessStatus>(IPC.invoke.mobileAccessStatus),
+  mobileAccessEnroll: (request: MobileAccessEnrollRequest) =>
+    invoke<MobileAccessStatus>(IPC.invoke.mobileAccessEnroll, request),
+  mobileAccessUnenroll: () => invoke<MobileAccessStatus>(IPC.invoke.mobileAccessUnenroll),
+  mobileAccessSetEnabled: (enabled: boolean) =>
+    invoke<MobileAccessStatus>(IPC.invoke.mobileAccessSetEnabled, { enabled }),
+  /** The QR payload; display it, never log or persist it. */
+  mobileAccessCreatePairing: () => invoke<MobileAccessPairing>(IPC.invoke.mobileAccessCreatePairing),
+  mobileAccessListDevices: () =>
+    invoke<{ devices: MobileDeviceSummary[] }>(IPC.invoke.mobileAccessListDevices),
+  mobileAccessRevokeDevice: (deviceId: string) =>
+    invoke<{ revoked: boolean }>(IPC.invoke.mobileAccessRevokeDevice, { deviceId }),
+  onMobileAccessChanged: (listener: (status: MobileAccessStatus) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.mobileAccessChanged, (payload) => listener(payload as MobileAccessStatus));
   },
 
   // --- Remote hosts (R2b pairing UX) -----------------------------------------

@@ -2280,5 +2280,586 @@
         "minimum": 1
       }
     }
+  },
+  "RelayRouteContext": {
+    "type": "object",
+    "required": [
+      "hostId",
+      "clientConnectionId",
+      "presentedToken",
+      "remoteAddress",
+      "openedAt"
+    ],
+    "properties": {
+      "hostId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "clientConnectionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "presentedToken": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "remoteAddress": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "openedAt": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  },
+  "PushNotification": {
+    "type": "object",
+    "required": [
+      "kind",
+      "hostId",
+      "sessionId",
+      "title"
+    ],
+    "properties": {
+      "kind": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "turn.completed"
+          },
+          {
+            "type": "string",
+            "const": "turn.failed"
+          },
+          {
+            "type": "string",
+            "const": "approval.requested"
+          },
+          {
+            "type": "string",
+            "const": "input.requested"
+          }
+        ]
+      },
+      "hostId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "turnId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "title": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "category": {
+        "type": "string",
+        "const": "APPROVAL"
+      }
+    },
+    "additionalProperties": false
+  },
+  "PushRegisterParams": {
+    "type": "object",
+    "required": [
+      "apnsToken",
+      "environment"
+    ],
+    "properties": {
+      "apnsToken": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{32,200}$"
+      },
+      "environment": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "sandbox"
+          },
+          {
+            "type": "string",
+            "const": "production"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "HostLinkRelayFrame": {
+    "anyOf": [
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "clientConnectionId",
+          "routeContext"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "client.open"
+          },
+          "clientConnectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "routeContext": {
+            "type": "object",
+            "required": [
+              "hostId",
+              "clientConnectionId",
+              "presentedToken",
+              "remoteAddress",
+              "openedAt"
+            ],
+            "properties": {
+              "hostId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "clientConnectionId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "presentedToken": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "remoteAddress": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "openedAt": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "clientConnectionId",
+          "message"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "client.message"
+          },
+          "clientConnectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "clientConnectionId",
+          "reason"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "client.close"
+          },
+          "clientConnectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "deviceId",
+          "status"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "push.result"
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "sent"
+              },
+              {
+                "type": "string",
+                "const": "invalid-token"
+              },
+              {
+                "type": "string",
+                "const": "failed"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "link.pong"
+          },
+          "at": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    ]
+  },
+  "HostLinkHostFrame": {
+    "anyOf": [
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "clientConnectionId",
+          "message"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "host.message"
+          },
+          "clientConnectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "clientConnectionId",
+          "code"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "host.close"
+          },
+          "clientConnectionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "tokenHashes",
+          "pairingHashes"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "host.devices"
+          },
+          "tokenHashes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "maxItems": 1000
+          },
+          "pairingHashes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "maxItems": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "deviceId",
+          "apnsToken",
+          "environment"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "push.register"
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "apnsToken": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{32,200}$"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "sandbox"
+              },
+              {
+                "type": "string",
+                "const": "production"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "deviceId"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "push.unregister"
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type",
+          "deviceIds",
+          "notification"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "push.notify"
+          },
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "notification": {
+            "type": "object",
+            "required": [
+              "kind",
+              "hostId",
+              "sessionId",
+              "title"
+            ],
+            "properties": {
+              "kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "turn.completed"
+                  },
+                  {
+                    "type": "string",
+                    "const": "turn.failed"
+                  },
+                  {
+                    "type": "string",
+                    "const": "approval.requested"
+                  },
+                  {
+                    "type": "string",
+                    "const": "input.requested"
+                  }
+                ]
+              },
+              "hostId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "sessionId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "turnId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "category": {
+                "type": "string",
+                "const": "APPROVAL"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "link",
+          "type"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "const": "racp-hostlink.v1"
+          },
+          "type": {
+            "type": "string",
+            "const": "link.ping"
+          },
+          "at": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    ]
   }
 }

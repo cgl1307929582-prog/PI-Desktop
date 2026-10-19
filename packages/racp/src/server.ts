@@ -34,6 +34,7 @@ import {
   type JsonRpcId,
   type JsonRpcMessage,
 } from "./jsonrpc.js";
+import { profileAllowsOperation } from "./mobile-policy.js";
 import { createOperations, type OperationContext, type OperationHandler } from "./operations.js";
 
 /** One accepted transport connection, as the server drives it. */
@@ -180,7 +181,7 @@ export class RacpServer {
       terminal: Boolean(options.operations.terminal),
       workspaceTools: Boolean(options.operations.workspaceTools),
       workspaceFiles: Boolean(options.operations.workspaceFiles),
-      notifications: false,
+      notifications: Boolean(options.operations.registerPush),
       bindings: ["RACP-WS"],
     };
     this.handlers = createOperations();
@@ -192,6 +193,39 @@ export class RacpServer {
 
   connectionCount(): number {
     return this.connections.size;
+  }
+
+  /** Close every live connection authenticated as `deviceId` (revocation, profile §5 step 4). */
+  closeDevice(deviceId: string, code = 4001, reason = "REVOKED"): number {
+    let closed = 0;
+    for (const connection of [...this.connections.values()]) {
+      if (connection.auth.kind === "device" && connection.auth.device.deviceId === deviceId) {
+        connection.close(code, reason);
+        this.release(connection);
+        closed += 1;
+      }
+    }
+    return closed;
+  }
+
+  /** Whether a live connection of `deviceId` holds a subscription to `sessionId`. */
+  deviceSubscribedTo(deviceId: string, sessionId: string): boolean {
+    for (const connection of this.connections.values()) {
+      if (connection.auth.kind !== "device" || connection.auth.device.deviceId !== deviceId) continue;
+      for (const subscription of connection.subscriptions.values()) {
+        if (subscription.sessionId === sessionId) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Device ids with at least one live connection. */
+  connectedDeviceIds(): string[] {
+    const ids = new Set<string>();
+    for (const connection of this.connections.values()) {
+      if (connection.auth.kind === "device") ids.add(connection.auth.device.deviceId);
+    }
+    return [...ids];
   }
 
   /**
@@ -313,6 +347,9 @@ export class RacpServer {
     const operation = method as RacpOperation;
     const handler = this.handlers.get(operation);
     if (!handler) throw new RacpError("METHOD_NOT_FOUND", `unknown operation ${method}`);
+    if (!profileAllowsOperation(connection.auth, operation)) {
+      throw new RacpError("FORBIDDEN", `${operation} is not available on this connection profile`);
+    }
     if (!rolesAllowOperation(connection.principal.roles, operation)) {
       throw new RacpError("FORBIDDEN", `principal lacks the role for ${operation}`);
     }

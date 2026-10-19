@@ -96,4 +96,6 @@ export type RacpHostOperations = {
   };
   /** Owner-only: revoke a paired device (spec `session/revoke`). */
   revokeDevice?: (deviceId: string) => Promise<boolean>;
+  /** Mobile profile: forward the authenticated phone's APNs registration (D663, profile §7). */
+  registerPush?: (deviceId: string, input: { apnsToken: string; environment: "sandbox" | "production" }) => Promise<void>;
 };

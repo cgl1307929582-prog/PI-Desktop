@@ -770,6 +770,11 @@ export class AgentHost {
     if (response.decision === "allow-session" && !this.allowRemoteSessionGrants && !principal.pairedDevice) {
       throw racpError("FORBIDDEN", "remote session grants are not allowed by Host policy");
     }
+    // A Plan/Goal approval selects a session permission mode; a phone may reject it but
+    // approving is a desktop decision (profile §6).
+    if (principal.mobile && request && request.kind !== "tool" && response.decision === "approve") {
+      throw racpError("FORBIDDEN", "approving a plan or goal contract requires the desktop");
+    }
     const result = await this.approvals.resolve(response, principal, state.revision + 1);
     if (!result.alreadyResolved) {
       this.afterApproval(state, request?.turnId);

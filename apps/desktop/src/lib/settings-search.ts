@@ -17,6 +17,7 @@ export type SettingsTabId =
   | "projects"
   | "sync"
   | "remoteHosts"
+  | "mobileAccess"
   | "voice"
   | "about";
 
@@ -305,6 +306,22 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.remoteHosts.statusOnline",
       "settings.remoteHosts.statusOffline",
       "settings.remoteHosts.experimental",
+    ],
+  },
+  {
+    id: "mobileAccess",
+    labelKey: "settings.nav.mobileAccess",
+    titleKey: "settings.mobileAccess.title",
+    group: "system",
+    experimentalBadgeKey: "settings.mobileAccess.experimental",
+    keywordKeys: [
+      "settings.mobileAccess.title",
+      "settings.mobileAccess.relayTitle",
+      "settings.mobileAccess.relayOrigin",
+      "settings.mobileAccess.enrollmentCode",
+      "settings.mobileAccess.pair",
+      "settings.mobileAccess.phonesTitle",
+      "settings.mobileAccess.experimental",
     ],
   },
   {

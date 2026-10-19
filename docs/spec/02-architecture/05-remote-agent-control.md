@@ -71,7 +71,8 @@ demand signal or product decision schedules them.
     control path. Every credential is issued by the user's own Host, and the
     only outbound connections are to the user's SSH hosts, the messaging
     channels the user configured, the model providers the user configured,
-    and the read-only GitHub Releases download of `pi-host` (D385).
+    the read-only GitHub Releases download of `pi-host` (D385), and the
+    relay the user self-hosts for the iOS client (D663 / ADR 0331).
 
 ## 3. Reference implementations and design inputs
 

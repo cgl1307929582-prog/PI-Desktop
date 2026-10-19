@@ -227,6 +227,30 @@ password for a host the user paired that way, under these rules:
 - Provider state remains owned by Rust host-core and uses existing provider and
   secret storage. No database schema or RACP credential surface is added.
 
+### 3.7 Mobile relay profile (rollout R4)
+
+D663 / ADR 0331 adds an iPhone client that reaches the desktop Agent Host
+through a relay the desktop owner runs on their own server
+(`03-runtime/23-mobile-relay-profile.md`). It stays within D385:
+
+- No account exists. The phone holds only a `pdt1.` device token minted by
+  the desktop after a QR pairing shown on the desktop screen; the pairing
+  token is single-use and expires in 5 minutes.
+- The desktop opens the Host link outbound with a per-Host `prh1.` credential
+  obtained once from a relay-operator enrollment code; the desktop pins the
+  relay origin and stores the credential with OS-keychain encryption.
+- The desktop authenticates every relayed logical connection from the
+  presented bearer itself. The relay keeps only a Host-pushed mirror of active
+  token hashes to refuse unknown bearers before routing; it is not an
+  authority. This profile's route context replaces the Gateway-signed
+  `HostRouteContext` of §3.3.
+- A phone principal holds `controller` and `approver`, never `owner`, and
+  always runs under the remote permission ceiling (§4.3).
+- TLS terminates at the relay, which can read payloads in memory; this is
+  accepted only because the relay operator is the desktop owner. The relay
+  MUST NOT persist or log payloads, tokens, or `Authorization` headers.
+- Push payloads carry only kind, ids, and a truncated session title.
+
 ### 3.6 Local-Agent remote workspace tools
 
 For locally owned remote projects, all provider configuration and model requests
@@ -609,6 +633,11 @@ D385 (2026-09-10) withdrew the first-party identity source: remote control
 is user-local by construction, every credential is issued by the user's own
 Host, and any Gateway is self-hosted and admits clients with those device
 credentials.
+
+D663 (2026-10-17) added the mobile relay profile (§3.7, ADR 0331): a
+user-self-hosted relay, Host-verified device tokens on relayed connections,
+phone roles without `owner`, and redacted push payloads. Its gates are listed
+in `03-runtime/23-mobile-relay-profile.md` §10.
 
 D454 (2026-09-19) added SSH password authentication for the bootstrap (§3.4,
 ADR 0293): the credential-handling rules above and gate 21. It relaxes

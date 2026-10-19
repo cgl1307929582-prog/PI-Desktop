@@ -258,6 +258,19 @@ export const IPC = {
     remoteHostSessions: "pi-desktop/remoteHost/sessions",
     remoteHostCreateSession: "pi-desktop/remoteHost/createSession",
     remoteHostSyncProviders: "pi-desktop/remoteHost/syncProviders",
+    /**
+     * Mobile access (D663 / ADR 0331): the opt-in outbound link to a
+     * user-self-hosted relay and the phones paired through it. Status and
+     * device lists carry no credential; `createPairing` returns the QR
+     * payload once.
+     */
+    mobileAccessStatus: "pi-desktop/mobileAccess/status",
+    mobileAccessEnroll: "pi-desktop/mobileAccess/enroll",
+    mobileAccessUnenroll: "pi-desktop/mobileAccess/unenroll",
+    mobileAccessSetEnabled: "pi-desktop/mobileAccess/setEnabled",
+    mobileAccessCreatePairing: "pi-desktop/mobileAccess/createPairing",
+    mobileAccessListDevices: "pi-desktop/mobileAccess/listDevices",
+    mobileAccessRevokeDevice: "pi-desktop/mobileAccess/revokeDevice",
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
@@ -463,6 +476,8 @@ export const IPC = {
     traySessionActivated: "pi-desktop/tray/event/sessionActivated",
     notificationChanged: "pi-desktop/notification/event/changed",
     sessionsChanged: "pi-desktop/session/event/changed",
+    /** Mobile access link state or paired phones changed; payload is `MobileAccessStatus`. */
+    mobileAccessChanged: "pi-desktop/mobileAccess/event/changed",
     remoteInteractions: "pi-desktop/remote/event/interactions",
     notificationActivated: "pi-desktop/notification/event/activated",
     notificationSound: "pi-desktop/notification/event/sound",

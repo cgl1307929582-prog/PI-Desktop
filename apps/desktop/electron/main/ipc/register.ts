@@ -28,6 +28,7 @@ import { registerBackgroundTasksIpc } from "./background-tasks-ipc";
 import { registerSkillsIpc } from "./skills-ipc";
 import { registerAgentImportIpc } from "./agent-import-ipc";
 import { registerRemoteHostIpc } from "./remote-host-ipc";
+import { registerMobileAccessIpc } from "./mobile-access-ipc";
 import { fetchSkillMarketDocument, searchSkillMarket } from "../skill-market-catalog";
 import { registerWindowIpc } from "./window-ipc";
 import { registerWorktreeIpc } from "./worktree-ipc";
@@ -510,6 +511,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   }
 
   registerRemoteHostIpc({ registrar });
+  registerMobileAccessIpc({ registrar });
 
   registerMarketIpc({
     registrar,

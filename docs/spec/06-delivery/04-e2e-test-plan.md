@@ -10202,7 +10202,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
-| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-HOST-settings-compact-inventory |
+| Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-HOST-settings-compact-inventory, E2E-MOBILE-relay |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list, E2E-PLUGIN-provider-catalog-add-service |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
@@ -15074,6 +15074,30 @@ browser milestones are scheduled.
   and the fixture's user approval action are controlled test boundaries.
 - **Status**: Candidate implementation; real SSH release validation remains the
   separately provisioned E2E-231 scenario.
+
+#### E2E-MOBILE-relay: An iPhone controls desktop sessions through a self-hosted relay
+
+- **Preconditions**: Isolated Desktop profile, a relay with a test certificate,
+  no paid model calls, no real APNs (fake sender).
+- **Steps**: Enroll the desktop with a relay code in Settings → Mobile access;
+  pair a phone from the QR payload; list sessions, subscribe, start a turn,
+  answer a tool approval, register push; let a turn complete while the phone
+  is away; restart the relay mid-turn and retry the same send; revoke the phone;
+  turn mobile access off.
+- **Expected**: Mobile access is off by default and opens no connection. The
+  relay credential is stored only encrypted. The phone holds `controller` +
+  `approver`, runs under the `ask` ceiling and cannot approve a contract with a
+  permission mode. The away event becomes one redacted push. The relay restart
+  does not stop the desktop turn; the retried send returns the same turn. A
+  revoked phone is closed and refused. No log holds a token or message body.
+- **Specs**: ADR 0331, `03-runtime/23-mobile-relay-profile.md`, security §3.7.
+- **Automation**: `apps/desktop/test/mobile-access-service.test.mjs`,
+  `apps/desktop/test/mobile-access-settings-user-path.test.mjs` (real component in
+  an isolated Electron window, mocked IPC), racp `hostlink*.test.ts` /
+  `mobile-auth.test.ts`; cross-repo `pi-relay/test/desktop.integration.test.ts`
+  (real relay over TLS, real `HostLinkCore`/`RacpServer`/`AgentHost`, fake runtime).
+- **Status**: Automated without a device; an iPhone, the Xcode app and real APNs
+  remain manual.
 
 #### E2E-231: The desktop drives a remote Host over an SSH tunnel
 

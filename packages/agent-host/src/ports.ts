@@ -16,6 +16,11 @@ export type Principal = {
   pairedDevice?: boolean;
   /** Set when Host policy lets approvers use the session's own mode. */
   approverOverride?: boolean;
+  /**
+   * A phone admitted through the mobile relay profile (D663). Always under the
+   * remote ceiling; may not approve a Plan/Goal contract with a permission mode.
+   */
+  mobile?: boolean;
   connectionId?: string;
 };
 

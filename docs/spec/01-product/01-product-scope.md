@@ -89,7 +89,8 @@ across devices without synchronizing conversation history or source files.
 - Full IDE experience
 - Trusted plugin provenance/signatures and a capability sandbox for raw plugin
   Node APIs
-- Mobile clients
+- Mobile clients other than the iOS client of rollout R4 (D663 / ADR 0331),
+  which controls the desktop's agent sessions through a user-self-hosted relay
 - Billing systems
 - Computer Use browser takeover
 

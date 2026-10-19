@@ -7749,3 +7749,20 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/browser-preview-tool.test.mjs`. The packaged File Manager
   scenario in E2E-153 covers the complete user path. See ADR 0330 and the
   plugin API, permission, security, and component specs.
+
+## 2026-10-17 — iOS client through a user-self-hosted relay (D663)
+
+- The maintainer wants to drive the desktop's agent sessions from an iPhone
+  anywhere, ChatGPT-style: session list, streamed turns, approvals, asktool
+  answers, stop, and push notifications. Screen control is not wanted.
+- Decision D663 / ADR 0331 schedules rollout R4: the desktop Agent Host opens
+  an outbound `racp-hostlink.v1` link to a relay on the user's own server; the
+  phone pairs by scanning a desktop QR code and holds only a Host-issued
+  `pdt1.` device token with `controller` + `approver` roles under the remote
+  permission ceiling. No account system; TLS terminates at the self-hosted
+  relay with no end-to-end layer; push goes through the user's own APNs key
+  with redacted payloads. D385 is extended, not changed.
+- The relay (`pi-relay`) and the iOS client (`pi-mobile-ios`) are separate
+  repositories that pin the JSON Schema fixture generated from
+  `packages/shared`. See `03-runtime/23-mobile-relay-profile.md`, security
+  §3.7, and rollout R4. Mobile clients other than this one remain non-goals.

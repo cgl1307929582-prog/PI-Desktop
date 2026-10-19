@@ -1131,7 +1131,10 @@ and one browser profile; the Host link (§11.4) uses `RACP-WS` framing.
 
 The Host link belongs to the unscheduled Gateway milestone (D375). It is
 specified here so the contract does not drift; the SSH-tunnel topology does
-not use it.
+not use it. Rollout R4 (D663 / ADR 0331) makes it concrete for a desktop
+Agent Host behind a user-self-hosted relay; that profile, including its
+route context, enrollment, pairing, and push frames, is
+`23-mobile-relay-profile.md`.
 
 The Host link is the outbound connection from an Agent Host to a Gateway. It
 is not a third client binding: it multiplexes logical client connections onto

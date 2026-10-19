@@ -4,4 +4,8 @@ export * from "./host-operations.js";
 export * from "./server.js";
 export * from "./client.js";
 export * from "./ws-binding.js";
+export * from "./mobile-policy.js";
+export * from "./hostlink.js";
+export * from "./hostlink-push.js";
+export * from "./hostlink-transport.js";
 export type { OperationContext, OperationHandler } from "./operations.js";

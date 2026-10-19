@@ -19,6 +19,7 @@ import { readCloseBehavior } from "../window-preferences";
 import { createAgentHostBridge, type AgentHostBridge } from "../agent-host-bridge";
 import { createBackendRouter, type BackendRouter } from "../remote/backend-router";
 import { createRemoteHostsBoot, setActiveRemoteHostsBoot } from "./remote-hosts";
+import { bootMobileAccess } from "./mobile-access";
 import {
   createMcpControlController,
   McpControlServer,
@@ -309,6 +310,20 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
         logger.app("runtime", "warn", "agent host queue restore failed", {
           data: String(error),
         });
+      });
+      // Mobile access (D663): opt-in; with no enrollment it opens nothing.
+      bootMobileAccess({
+        dataDir,
+        encryption: {
+          isAvailable: () => safeStorage.isEncryptionAvailable(),
+          encryptString: (plain) => safeStorage.encryptString(plain),
+          decryptString: (buffer) => safeStorage.decryptString(buffer),
+        },
+        agentHost: state.agentHostBridge.agentHost,
+        getHost,
+        appVersion: APP_VERSION,
+        sendToRenderer,
+        log: (level, message, data) => logger.app("runtime", level, message, { data }),
       });
     }
     const host = getHost();

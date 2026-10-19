@@ -172,10 +172,28 @@ export class EventHub {
     return this.host;
   }
 
+  private readonly observers = new Set<(envelope: RacpEventEnvelope) => void>();
+
+  /**
+   * Observe every published envelope without a subscription, bound, or
+   * cursor (used by the mobile push adapter, D663). Observers must not throw.
+   */
+  observe(listener: (envelope: RacpEventEnvelope) => void): () => void {
+    this.observers.add(listener);
+    return () => this.observers.delete(listener);
+  }
+
   /** Append to the right stream and fan out. Returns the allocated envelope. */
   publish(draft: EventDraft): RacpEventEnvelope {
     const stream = draft.scope === "host" ? this.host : this.stream(requireSession(draft));
     const envelope = stream.append(draft);
+    for (const observer of [...this.observers]) {
+      try {
+        observer(envelope);
+      } catch {
+        // Observation is best-effort; it never blocks delivery to subscribers.
+      }
+    }
     for (const subscription of [...this.subscriptions.values()]) {
       if (subscription.scope !== draft.scope) continue;
       if (draft.scope === "session" && subscription.sessionId !== draft.sessionId) continue;

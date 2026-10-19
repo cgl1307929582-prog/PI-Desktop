@@ -5,6 +5,7 @@ import {
   WorkspaceToolExecuteSchema, WorkspaceToolAbortSchema, WorkspaceFilesRequestSchema,
   RacpCursorSchema,
   RacpInputResponseSchema,
+  RacpPushRegisterParamsSchema,
   RacpRequestContextSchema,
   type RacpCursor,
   type RacpLimits,
@@ -99,7 +100,8 @@ const TerminalResizeParams = Type.Object({
   rows: Type.Integer({ minimum: 1, maximum: 1000 }),
 });
 const TerminalIdParams = Type.Object({ terminalId: Type.String({ minLength: 1 }) });
-const PairParams = Type.Object({ deviceLabel: Type.Optional(Type.String()) });
+/** `label` is the mobile profile field (profile §5); `deviceLabel` stays for the SSH bootstrap. */
+const PairParams = Type.Object({ deviceLabel: Type.Optional(Type.String()), label: Type.Optional(Type.String()) });
 
 function check<T extends Type.TSchema>(schema: T, params: unknown): Type.Static<T> {
   if (!Value.Check(schema, params)) {
@@ -136,9 +138,11 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     if (context.connection.auth.kind !== "pairing") {
       throw new RacpError("FORBIDDEN", "connection/pair needs a pairing token on the upgrade request");
     }
+    const mobile = context.connection.auth.profile === "mobile";
+    const label = (input.label ?? input.deviceLabel)?.trim() || (mobile ? "phone" : "desktop");
     const paired = await context.authenticator.pair(
       context.connection.auth.tokenHash,
-      input.deviceLabel?.trim() || "desktop",
+      label,
       ["owner"],
     ).catch((error: unknown) => {
       const code = (error as { errorCode?: string })?.errorCode;
@@ -149,7 +153,19 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     });
     context.log("info", "device paired", { deviceId: paired.deviceId, connectionId: context.connection.id });
     // The pairing connection stays unprivileged: the client reconnects with the device token.
-    return { deviceId: paired.deviceId, deviceToken: paired.token, roles: ["owner"] };
+    return { deviceId: paired.deviceId, deviceToken: paired.token, roles: paired.roles };
+  });
+  handlers.set("push/register", async (context, params) => {
+    const input = check(RacpPushRegisterParamsSchema, params);
+    const auth = context.connection.auth;
+    if (auth.kind !== "device" || auth.profile !== "mobile") {
+      throw new RacpError("FORBIDDEN", "push/register is only available to a paired phone");
+    }
+    const register = context.operations.registerPush;
+    if (!register) throw new RacpError("CAPABILITY_UNAVAILABLE", "push notifications are not offered by this Host");
+    // The registration is bound to the authenticated device, never to a client-chosen id.
+    await register(auth.device.deviceId, input);
+    return { ok: true };
   });
   handlers.set("host/list", async () => {
     throw new RacpError("METHOD_NOT_FOUND", "host/list exists only behind a Gateway");

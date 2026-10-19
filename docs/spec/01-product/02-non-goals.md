@@ -8,7 +8,8 @@
 3. Full IDE (LSP, debugger, multi-file editor workspace)
 4. A from-scratch agent loop replacing pi
 5. Full plugin marketplace at day one
-6. Mobile clients
+6. Mobile clients other than the first-party iOS client of the desktop Agent
+   Host through a user-self-hosted relay (D663 / ADR 0331, rollout R4)
 7. Multi-user auth systems
 8. Billing/subscription modules
 9. Computer Use browser takeover

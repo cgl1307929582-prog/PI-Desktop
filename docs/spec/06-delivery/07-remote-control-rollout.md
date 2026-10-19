@@ -36,6 +36,10 @@ The scheduled order is R0, R1, R2, R3. Milestones marked unscheduled keep
 their specifications so the contract does not drift, and they are scheduled
 only by a later product decision.
 
+D663 (2026-10-17) is that decision for one slice: the maintainer asks for an
+iPhone client of the desktop, reachable anywhere through a relay on the
+maintainer's own server. It is scheduled as R4 and does not reorder R2/R3.
+
 ### Experimental desktop MVP (narrow acceptance slice)
 
 The desktop exposes Remote Hosts in all builds with an Experimental badge. This
@@ -239,6 +243,40 @@ inbound listener.
 
 Exit criteria: E2E-232 passes; payloads contain summaries and ids only;
 commands from an unlinked chat have no effect; the Host has no new listener.
+
+### R4 — iOS client through a self-hosted relay
+
+Deliver the mobile relay profile (`03-runtime/23-mobile-relay-profile.md`,
+ADR 0331) across three repositories. This repository owns the desktop side and
+the contract; `pi-relay` and `pi-mobile-ios` are separate repositories that pin
+the generated JSON Schema fixture.
+
+- **R4a Contract.** Add the Host link additions (`host.devices`,
+  `push.register`, `push.notify`, `push.result`), the `push/register`
+  operation, and the relay route context to the typebox source in
+  `packages/shared`; regenerate the fixture; contract tests.
+- **R4b Desktop Host link.** An Electron-main service, opt-in and off by
+  default, that enrolls with a relay, holds the outbound link with bounded
+  reconnect, and feeds each logical connection into `RacpServer.accept` over
+  the existing Agent Host bridge; a desktop `RacpHostOperations` for project
+  list, workspace reads, and diff; device credential storage beside the
+  remote-host records.
+- **R4c Desktop UI.** Settings → Mobile access: relay origin and enrollment,
+  enable switch, link status, QR pairing, device list with revoke. All strings
+  through i18n.
+- **R4d Relay.** `pi-relay`: enrollment CLI, Host link and phone endpoints,
+  hash pre-filter, rate limits, redacted audit log, APNs sender.
+- **R4e iOS MVP.** `pi-mobile-ios`: QR pairing, Host and session lists,
+  history with cursor replay, streamed turns, approval and asktool cards,
+  stop/interrupt, diff view.
+- **R4f Push.** `push/register`, `push.notify` on the four event kinds,
+  notification approve/deny actions.
+
+Exit criteria: the conformance list of the profile's §10 passes in the
+desktop and relay test suites; an end-to-end run pairs a simulator client
+through a local relay, completes a turn with one approval, survives a relay
+restart mid-turn without duplicate execution, and revokes the device; the
+desktop with mobile access disabled opens no outbound connection.
 
 ### Unscheduled — Gateway and Host link (formerly R3)
 
@@ -491,6 +529,28 @@ Recorded on the `feat/remote-agent-host` branch, 2026-09-10:
   terminal work-panel client, the reverse tool relay, and provider-configuration
   propagation over the SSH channel are not in this slice.
 
+- R4 (2026-10-18, D663 / ADR 0331), all six slices implemented:
+  - R4a: `packages/shared` `racp-hostlink.ts` (frames, `PushNotification`,
+    `push/register` params) and `mobile-access.ts` (Settings IPC types, relay
+    origin normalization, QR payload); `push/register` in the catalog; the
+    schemas join the generated fixture.
+  - R4b: `packages/racp` mobile profile (`DeviceRecord.profile`, phone roles
+    `controller` + `approver`, no paired-device exemption, `mobile-policy.ts`),
+    `HostLinkCore`, `wsHostLinkConnector`, and the push notifier; `EventHub.observe`
+    and the Plan/Goal approval refusal for phones in `packages/agent-host`; the
+    Electron-main service under `electron/main/mobile/` booted from
+    `bootstrap/mobile-access.ts`, off by default.
+  - R4c: Settings → Mobile access (`MobileAccessPage`, QR via `uqr`), nine locales.
+  - R4d–R4f: the `pi-relay` and `pi-mobile-ios` repositories.
+  - Automated evidence: racp, agent-host, shared, pi-host, desktop service and
+    Settings user-path tests; relay unit and TLS WebSocket tests; a cross-repo
+    end-to-end test (pairing, turn, approval, push, relay restart mid-turn
+    without duplicate execution, revocation); a manual run through Caddy; the
+    iOS Swift Testing suites on macOS.
+  - Not verified: iOS-only code paths, an Xcode app target, a device or
+    simulator, real APNs delivery, a Docker image build, and a public
+    deployment.
+
 ## 8. Amendment history
 
 D374 (2026-09-10) replaced the Electron facade milestone with the headless
@@ -514,3 +574,7 @@ source to the PI account service.
 D385 (2026-09-10) withdrew the identity-source clause: remote control is
 user-local by construction, and any Gateway is self-hosted and admits clients
 with Host-issued device credentials.
+
+D663 (2026-10-17) scheduled R4: an iOS client of the desktop Agent Host
+through a user-self-hosted relay, with QR pairing, Host-verified device tokens,
+and APNs push through the user's own relay (ADR 0331).

@@ -269,3 +269,11 @@ the project runs.
 4. **Unchanged.** The SSH-tunnel topology, device pairing, the messaging
    integration, and every RACP shape already satisfy this rule; the
    specifications change wording, not structure.
+
+## Follow-up (D663)
+
+ADR 0331 schedules the Host link for one topology: the desktop Agent Host
+connects outbound to a relay the user self-hosts, and a first-party iOS client
+pairs with Host-issued device tokens. It extends, and does not change, the D385
+rule: the user's own relay joins the list in item 3 of the user's outbound
+endpoints.

@@ -5,6 +5,24 @@ import type {
   AssistantTurnPart,
 } from "./assistant-turns";
 import { isStandaloneRunActivity } from "./assistant-turns";
+import { isDelegationActivityItem, subagentOutcome, type SubagentOutcome } from "./subagent-topology";
+
+/** A completed tool must not keep accruing time while its parent waits. */
+export function processClockRunning(
+  parts: readonly AssistantTurnPart[],
+  active: boolean,
+  statuses?: ReadonlyMap<string, SubagentOutcome>,
+): boolean {
+  return active && parts.some((part) => part.kind === "activity" && part.items.some((item) => {
+    if (item.kind === "tool") {
+      const message = item.message;
+      return isDelegationActivityItem(item) ? subagentOutcome(message, statuses) === "running"
+        : message.toolStatus === "running";
+    }
+    if (item.kind === "hostedSearch") return item.round.status === "searching";
+    return isThinkingActive(item.message, active);
+  }));
+}
 
 export function isThinkingActive(message: UiMessage, active: boolean): boolean {
   return active && message.status === "streaming" && !message.content.trim();
@@ -53,7 +71,14 @@ export type TurnProcessBodySegment = {
   parts: AssistantTurnPart[];
 };
 
-export type TurnProcessSegment = TurnProcessRunSegment | TurnProcessBodySegment;
+/** Public progress is conversation content, never a disclosure payload. */
+export type TurnProgressSegment = {
+  kind: "progress";
+  key: string;
+  parts: Extract<AssistantTurnPart, { kind: "message" }>[];
+};
+
+export type TurnProcessSegment = TurnProcessRunSegment | TurnProcessBodySegment | TurnProgressSegment;
 
 /**
  * Split one turn's process into the order it renders (ADR
@@ -62,8 +87,8 @@ export type TurnProcessSegment = TurnProcessRunSegment | TurnProcessBodySegment;
  * `Bash` and run aliases are pulled out of the process flow entirely: each is
  * its own `run` segment rendered as a standalone row with no process or group
  * ancestor, and adjacent calls stay separate. The remaining tools, thinking,
- * hosted searches and progress text keep their original order and are grouped
- * into `process` chunks between the run calls. Segment parts are the same part
+ * hosted searches keep their original order in `process` chunks. Public progress
+ * paragraphs remain standalone between those chunks. Segment parts are the same part
  * objects as the input, so downstream reveal and active-tail identity still
  * hold.
  */
@@ -81,6 +106,11 @@ export function segmentTurnProcess(
     pending = [];
   };
   for (const part of parts) {
+    if (part.kind === "message") {
+      flushProcess();
+      segments.push({ kind: "progress", key: part.message.id, parts: [part] });
+      continue;
+    }
     if (part.kind === "activity" && part.items.length === 1) {
       const item = part.items[0];
       if (isStandaloneRunActivity(item)) {

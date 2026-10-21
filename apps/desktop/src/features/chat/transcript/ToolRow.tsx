@@ -343,18 +343,20 @@ function HostToolRow({
             (outcome === "running" ? now : nodeStartedAt)) -
             nodeStartedAt,
         )
-      : message.toolDurationMs;
+      : status === "running" && Number.isFinite(Date.parse(message.createdAt))
+        ? Math.max(0, now - Date.parse(message.createdAt))
+        : message.toolDurationMs;
   const duration =
-    typeof durationMs === "number" && durationMs > 0
+    typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0
       ? formatToolDuration(durationMs / 1000)
       : "";
 
   useEffect(() => {
-    if (outcome !== "running") return;
+    if (outcome !== "running" && status !== "running") return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [outcome]);
+  }, [outcome, status]);
 
   // Auto-scroll the nested `.tool-row-content` containers to their bottom
   // while the tool is still running. These elements have `max-height: 260px`
@@ -528,6 +530,7 @@ function HostToolRow({
               </span>
             ) : null}
             <ToolChips chips={chips} />
+            {duration && <span className="tool-row-duration" data-tool-duration>{duration}</span>}
             {runHead && statusLabel ? (
               <span
                 className={`tool-row-state ${statusTone}`}

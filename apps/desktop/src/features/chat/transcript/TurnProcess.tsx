@@ -7,6 +7,7 @@ import { cachedActivitySummary, cachedVisibleProcessSteps } from "../../../lib/t
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import {
   isTurnThinking,
+  processClockRunning,
   processContainsMessage,
   turnProcessTiming,
 } from "../../../lib/turn-process";
@@ -23,14 +24,12 @@ import { DisclosureScope, disclosureKey, useAutomaticDisclosure } from "./disclo
 export function TurnProcess({
   turnId,
   processParts,
-  turnParts,
   delegationStatuses,
   isActive,
   children,
 }: {
   turnId: string;
   processParts: readonly AssistantTurnPart[];
-  turnParts: readonly AssistantTurnPart[];
   isActive: boolean;
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
   children: ReactNode;
@@ -43,7 +42,8 @@ export function TurnProcess({
   const summary = useMemo(() => cachedActivitySummary(
     processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses,
   ), [processParts, delegationStatuses]);
-  const thinkingNow = useMemo(() => isTurnThinking(turnParts, isActive), [turnParts, isActive]);
+  const thinkingNow = useMemo(() => isTurnThinking(processParts, isActive), [processParts, isActive]);
+  const clockRunning = useMemo(() => processClockRunning(processParts, isActive, delegationStatuses), [processParts, isActive, delegationStatuses]);
   const visibleSteps = useMemo(() => cachedVisibleProcessSteps(processParts, !showThinking, isActive), [processParts, showThinking, isActive]);
   // Active processes start open and untouched completed ones close by default;
   // an explicit user choice stays authoritative. This does not depend on the
@@ -56,16 +56,16 @@ export function TurnProcess({
   );
   const detailsId = useId();
   const [now, setNow] = useState(Date.now);
-  const { startedAt, endedAt } = useMemo(() => turnProcessTiming(turnParts), [turnParts]);
+  const { startedAt, endedAt } = useMemo(() => turnProcessTiming(processParts), [processParts]);
   useEffect(() => {
-    if (!isActive) return;
+    if (!clockRunning) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [isActive]);
+  }, [clockRunning]);
   if (visibleSteps === 0) return null;
   const seconds = startedAt === undefined ? 0 : Math.max(
-    0, Math.floor(((isActive ? now : (endedAt ?? startedAt)) - startedAt) / 1000),
+    0, ((clockRunning ? now : (endedAt ?? startedAt)) - startedAt) / 1000,
   );
   return (
     <section className={`turn-process${disclosure.open ? " open" : ""}${isActive ? " active" : ""}`}>
@@ -78,8 +78,8 @@ export function TurnProcess({
         onClick={disclosure.toggle}
       >
         <span className="tool-activity-icon" aria-hidden><IconSparkles size={14} /></span>
-        <span className={`tool-activity-label${isActive ? " running" : ""}`}>
-          {t(isActive ? thinkingNow ? "chat.thinkingFor" : "chat.processingFor" : "chat.processedFor", {
+        <span className={`tool-activity-label${clockRunning ? " running" : ""}`}>
+          {t(clockRunning ? thinkingNow ? "chat.thinkingFor" : "chat.processingFor" : "chat.processedFor", {
             time: formatToolDuration(seconds),
           })}
         </span>

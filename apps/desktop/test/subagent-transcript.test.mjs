@@ -6,6 +6,9 @@ import {
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { register } from "node:module";
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const { TOOL_RUNNING_KEYS } = await import("../src/lib/tool-display.ts");
 
 const transcriptSource = await readTranscriptSource();
 const runtimeSource = await readFile(
@@ -143,7 +146,7 @@ test("a Task row is expandable and names the delegate it used", () => {
     /hasToolDetails\(message\) \|\| Boolean\(delegate\)/,
   );
   assert.match(transcriptSource, /TOOL_ACTION_KEYS.*delegate: "chat\.toolDelegated"/s);
-  assert.match(transcriptSource, /TOOL_RUNNING_KEYS.*delegate: "chat\.toolDelegating"/s);
+  assert.equal(TOOL_RUNNING_KEYS.delegate, "chat.toolDelegating");
   assert.match(transcriptSource, /className="tool-row-agent"/);
   assert.match(transcriptSource, /case "delegate":\n\s+return <IconBot/);
 });

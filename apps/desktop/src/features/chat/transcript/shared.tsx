@@ -355,19 +355,7 @@ export const LIFECYCLE_RUNNING_KEYS: Record<"wait" | "list" | "stop", string> = 
   stop: "chat.subagentStopping",
 };
 
-export const TOOL_RUNNING_KEYS: Record<ToolAction, string> = {
-  read: "chat.toolReading",
-  list: "chat.toolListing",
-  search: "chat.toolSearching",
-  write: "chat.toolWriting",
-  edit: "chat.toolEditing",
-  run: "chat.toolRunning",
-  fetch: "chat.toolFetching",
-  fork: "chat.toolUsing",
-  delegate: "chat.toolDelegating",
-  todo: "chat.todo.updating",
-  use: "chat.toolUsing",
-};
+export { TOOL_RUNNING_KEYS } from "../../../lib/tool-display";
 
 export function ToolActionIcon({ action }: { action: ToolAction }) {
   const props = { size: 15, "aria-hidden": true };

@@ -2092,7 +2092,7 @@ export class DesktopAgentRuntime {
       // Workflow rules.
       "Complete the requested work and relevant checks without expanding scope. Preserve unrelated user changes. Resolve recoverable blockers yourself.",
       // Visibility rules.
-      "Before each tool batch, briefly state its purpose. Keep the user informed during long work. The final response must state the outcome, verification, and remaining blockers. Never claim actions or checks you did not perform.",
+      "Before each tool batch, briefly state its purpose in a short public progress message, separate from private reasoning. Use the user's conversational language for every progress update, not just the final answer; a Chinese request requires Chinese progress even when code, filenames, or reference documents are English. Keep the user informed during long work. At meaningful milestones say what finished, what is happening now, and any real blocker. Do not invent percentages, test results, or agent assignments. The final response must state the outcome, verification, and remaining blockers. Never claim actions or checks you did not perform.",
       // Delegation steering (ADR 0089).
       ...(this.subagents.length
         ? [

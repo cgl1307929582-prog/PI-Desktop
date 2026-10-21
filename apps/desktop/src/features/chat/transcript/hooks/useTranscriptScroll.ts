@@ -93,6 +93,22 @@ export function useTranscriptScroll({
   const prependHeightRef = useRef<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showJump, setShowJump] = useState(false);
+  const viewportAnchorRef = useRef<{ element: HTMLElement; top: number } | null>(null);
+  const captureViewportAnchor = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || pinnedRef.current || !transcriptHasLayout(scroller)) {
+      viewportAnchorRef.current = null;
+      return;
+    }
+    const viewport = scroller.getBoundingClientRect();
+    const rows = [...scroller.querySelectorAll<HTMLElement>(".message-row")];
+    const visible = rows.filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom;
+    });
+    const element = visible.find((row) => row.getBoundingClientRect().top >= viewport.top) ?? visible[0];
+    viewportAnchorRef.current = element ? { element, top: element.getBoundingClientRect().top } : null;
+  }, []);
 
   // Steady-state cap on mounted history rows (D261). Grows when the user
   // reaches the top of the window; reset per session below.
@@ -383,6 +399,7 @@ export function useTranscriptScroll({
       lastScrollTopRef.current = el.scrollTop;
       setShowJump(true);
       rememberReadingPosition();
+      captureViewportAnchor();
       return;
     }
     const wasPinned = pinnedRef.current;
@@ -423,7 +440,8 @@ export function useTranscriptScroll({
       setShowJump(transition.showJump);
     }
     rememberReadingPosition();
-  }, [cancelFollowScroll, reachTop, readingPositionPendingRef, readingWindow, rememberReadingPosition, scheduleFollowScroll]);
+    captureViewportAnchor();
+  }, [cancelFollowScroll, captureViewportAnchor, reachTop, readingPositionPendingRef, readingWindow, rememberReadingPosition, scheduleFollowScroll]);
 
   // Send / retry / regenerate always re-pins follow mode so the new prompt and
   // its stream stay in view, even if the user had scrolled up through history.
@@ -477,11 +495,30 @@ export function useTranscriptScroll({
     const content = contentRef.current;
     const scroller = scrollRef.current;
     if (!content || !scroller || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(followScrollNow);
+    // A fixed status panel can resize or disappear above the scrollport. Keep
+    // the text at the same screen position for readers who left follow mode;
+    // preserving scrollTop alone would visibly move their entire transcript.
+    const ro = new ResizeObserver(() => {
+      if (!paneVisibleRef.current || !transcriptHasLayout(scroller)) {
+        viewportAnchorRef.current = null;
+        return;
+      }
+      const anchor = viewportAnchorRef.current;
+      if (anchor?.element.isConnected && !pinnedRef.current &&
+          !readingPositionPendingRef.current && !isDisclosureAnchorHeld()) {
+        const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+        if (Math.abs(delta) > 0.01) {
+          scroller.scrollTop += delta;
+          recordScrollPosition(scroller.scrollTop);
+        }
+      }
+      followScrollNow();
+      captureViewportAnchor();
+    });
     ro.observe(content, { box: "border-box" });
     ro.observe(scroller, { box: "border-box" });
     return () => ro.disconnect();
-  }, [followScrollNow]);
+  }, [captureViewportAnchor, followScrollNow, isDisclosureAnchorHeld, readingPositionPendingRef, recordScrollPosition]);
 
   // Defer one immutable projection, never messages and compaction boundaries
   // independently. First paint, reading, and pane reveal use the current source.

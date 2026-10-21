@@ -140,7 +140,7 @@ test("pinned follow re-pins inside the resize observer, on the border box", () =
     transcript,
     /const followScrollNow = useCallback\(\(\) => \{[\s\S]{0,400}?if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
-  assert.match(transcript, /new ResizeObserver\(followScrollNow\)/);
+  assert.match(transcript, /new ResizeObserver\(\(\) => \{[\s\S]*?followScrollNow\(\);/);
   assert.doesNotMatch(transcript, /new ResizeObserver\(scheduleFollowScroll\)/);
   // The composer publishes its height as the content's bottom padding; only the
   // border box sees that change. The scroller's own box covers window resizes.

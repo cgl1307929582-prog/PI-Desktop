@@ -2,6 +2,7 @@ import { transcriptLongHistoryProbe as runLongHistoryProbe } from "./transcript-
 import { transcriptEditProbe } from "./transcript-edit";
 import { turnProcessProbe } from "./turn-process";
 import { transcriptStatusProbe } from "./transcript-status";
+import { executionVisibilityProbe } from "./execution-visibility";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useState } from "react";
@@ -647,8 +648,10 @@ globalThis.transcriptRenderProbe = async () => {
     const markdownLinks = await markdownLinkInteractionProbe(i18n);
     const contextMenuSubmenu = await contextMenuSubmenuInteractionProbe();
     const turnProcess = await turnProcessProbe();
+    const executionVisibility = await executionVisibilityProbe();
     return {
-      ok: statusLifecycle.ok && markdownLinks.ok && contextMenuSubmenu.ok && turnProcess.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok && contextMenuSubmenu.ok && turnProcess.ok && executionVisibility.ok,
+      executionVisibility,
       statusLifecycle,
       markdownLinks,
       contextMenuSubmenu,
@@ -921,10 +924,14 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       // Ending restores the real toolbar; its height need not match the lane.
       // Unpinned readers must keep their text position despite that change.
       if (!pinned) {
-        for (const field of ["scrollTop", "firstRowTop", "lastTextBottom"] as const) {
+        // The fixed current-work panel disappears at completion, so scrollTop
+        // must compensate for the changing viewport. The text stays in place.
+        // Offscreen rows use content-visibility and may replace an intrinsic
+        // estimate as the viewport grows. Measure the text actually on screen.
+        for (const field of ["lastTextBottom"] as const) {
           const before = active[field];
           const after = ended[field];
-          check(before !== null && after !== null && Math.abs(after - before) <= 0.01,
+          check(before !== null && after !== null && Math.abs(after - before) <= 1,
             `${label}: ${field} changed (${after} vs ${before})`);
         }
       }

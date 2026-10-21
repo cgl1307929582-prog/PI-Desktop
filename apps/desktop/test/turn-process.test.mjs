@@ -10,7 +10,16 @@ const {
   segmentTurnProcess,
   visibleProcessSteps,
   turnProcessTiming,
+  processClockRunning,
 } = await import("../src/lib/turn-process.ts");
+
+test("a completed tail tool stays frozen while the parent awaits its next model response", () => {
+  const parts = [{ kind: "activity", items: [{ kind: "tool", message: { role: "tool", toolName: "Read", toolStatus: "success" } }] }];
+  assert.equal(processClockRunning(parts, true), false);
+  parts[0].items[0].message.toolStatus = "running";
+  assert.equal(processClockRunning(parts, true), true);
+  assert.equal(processClockRunning(parts, false), false);
+});
 
 const message = (id, role, content, extra = {}) => ({
   id,
@@ -192,6 +201,23 @@ test("a turn without Bash keeps one process segment", () => {
     segments.map((segment) => segment.kind),
     ["process"],
   );
+});
+
+test("public progress stays outside disclosures and earlier step timing never grows with later work", () => {
+  const messages = [
+    message("intro", "assistant", "先检查项目"),
+    tool("read", "Read", { toolDurationMs: 100 }),
+    message("progress", "assistant", "正在编写修复", { createdAt: "2026-09-17T00:01:00.000Z" }),
+    tool("edit", "Edit", { createdAt: "2026-09-17T00:01:01.000Z", toolDurationMs: 3000 }),
+    message("answer", "assistant", "修复完成", { createdAt: "2026-09-17T00:14:28.000Z" }),
+  ];
+  const segments = segmentTurnProcess(projectTurnProcess(turn(messages)).process);
+  assert.deepEqual(segments.map((part) => part.kind), ["progress", "process", "progress", "process"]);
+  const first = turnProcessTiming(segments[1].parts);
+  const second = turnProcessTiming(segments[3].parts);
+  assert.equal(first.endedAt - first.startedAt, 100);
+  assert.equal(second.endedAt - second.startedAt, 3000);
+  assert.equal(segments[2].parts[0].message.content, "正在编写修复");
 });
 
 test("history timing uses recorded ends and rejects invalid timestamps and durations", () => {

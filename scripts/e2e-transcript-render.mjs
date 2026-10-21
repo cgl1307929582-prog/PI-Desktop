@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,6 +85,15 @@ try {
   const css = [...appHtml.matchAll(/href="([^" ]+\.css)"/g)].map(
     (match) => match[1],
   );
+  // ChatSurface is lazy-loaded in the app. Include its execution panel CSS,
+  // otherwise an unstyled block could falsely pass the geometry assertions.
+  for (const asset of await readdir(join(renderer, "assets"))) {
+    if (!asset.endsWith(".css")) continue;
+    const path = `./assets/${asset}`;
+    if ((await readFile(join(renderer, path), "utf8")).includes(".current-work{")) {
+      if (!css.includes(path)) css.push(path);
+    }
+  }
   assert(
     css.length,
     "Build the app with pnpm build:js before running this check",
@@ -112,6 +121,7 @@ try {
   const builtRule = builtCss.match(
     /\.transcript-runtime-status\{([^}]*)\}/,
   )?.[1];
+  assert(builtCss.includes(".current-work{"), "Build the current-work stylesheet before running this check");
   assert(
     builtRule,
     "the built stylesheet predates the runtime status lane; build with pnpm build:js",

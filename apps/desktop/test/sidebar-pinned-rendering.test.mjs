@@ -46,6 +46,7 @@ test("sidebar renders global pins once, outside project folding and history limi
     const meta = Object.fromEntries(pins.map(({ id }) => [id, { pinned: true }]));
     meta["archived-pin"].archived = true;
     const seed = {
+      settings: { ...useAppStore.getInitialState().settings, sidebarSessionTime: true },
       sessions: [...pins, ...normal, session("date-row", "/dated"), session("temporary-normal", null)],
       sessionMeta: meta,
       projectMeta: {

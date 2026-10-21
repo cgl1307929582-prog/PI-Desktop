@@ -366,6 +366,9 @@ export const AssistantTurn = memo(function AssistantTurn({
           if (segment.kind === "run") {
             return <StandaloneRunRow key={`run-${segment.key}`} segment={segment} />;
           }
+          if (segment.kind === "progress") {
+            return <AssistantTurnParts key={`progress-${segment.key}`} parts={segment.parts} {...partContext} />;
+          }
           const ownsActiveTail =
             activePart !== undefined && segment.parts.includes(activePart);
           return (
@@ -373,7 +376,6 @@ export const AssistantTurn = memo(function AssistantTurn({
               key={`process-${segment.key}`}
               turnId={segment.key}
               processParts={segment.parts}
-              turnParts={entry.parts}
               isActive={isActive && ownsActiveTail}
               delegationStatuses={turnDelegationStatuses}
             >

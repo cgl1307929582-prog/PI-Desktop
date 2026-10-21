@@ -9,7 +9,7 @@ import {
   isTurnThinking,
   processClockRunning,
   processContainsMessage,
-  turnProcessTiming,
+  turnProcessDuration,
 } from "../../../lib/turn-process";
 import { resolveShowThinking } from "../../../lib/thinking-visibility";
 import { useAppStore } from "../../../stores/app-store";
@@ -56,7 +56,6 @@ export function TurnProcess({
   );
   const detailsId = useId();
   const [now, setNow] = useState(Date.now);
-  const { startedAt, endedAt } = useMemo(() => turnProcessTiming(processParts), [processParts]);
   useEffect(() => {
     if (!clockRunning) return;
     setNow(Date.now());
@@ -64,9 +63,7 @@ export function TurnProcess({
     return () => window.clearInterval(timer);
   }, [clockRunning]);
   if (visibleSteps === 0) return null;
-  const seconds = startedAt === undefined ? 0 : Math.max(
-    0, ((clockRunning ? now : (endedAt ?? startedAt)) - startedAt) / 1000,
-  );
+  const seconds = turnProcessDuration(processParts, clockRunning ? now : undefined) / 1000;
   return (
     <section className={`turn-process${disclosure.open ? " open" : ""}${isActive ? " active" : ""}`}>
       <button

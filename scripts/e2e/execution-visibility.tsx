@@ -111,6 +111,17 @@ export async function executionVisibilityProbe() {
     host.style.width = "390px";
     await render();
     check(bar()!.getBoundingClientRect().right <= host.getBoundingClientRect().right + 1, "status fits a narrow pane");
+    const startedAt = Date.now() - 90000;
+    current = [
+      msg("buffered-user", "user", "只读核对", { createdAt: new Date(startedAt).toISOString() }),
+      msg("buffered-progress", "assistant", "开始核对。", { createdAt: new Date(startedAt + 20000).toISOString(), responseDurationMs: 20000 }),
+      tool("buffered-wait", "TaskWait", { createdAt: new Date(startedAt + 20000).toISOString(), toolDurationMs: 1 }),
+      msg("buffered-answer", "assistant", "核对完成。", { createdAt: new Date(startedAt + 75000).toISOString(), thinking: "fixture", responseDurationMs: 55000 }),
+    ];
+    await render();
+    const wallClock = bar()?.querySelector(".current-work-heading")?.textContent?.match(/已用 1m (\d+)s/);
+    check(wallClock && Number(wallClock[1]) >= 28 && Number(wallClock[1]) <= 31, "turn clock retains the initial provider wait after output arrives");
+    check([...host.querySelectorAll(".turn-process > button")].some((header) => header.textContent?.includes("已处理 55s")), "buffered response duration is counted once instead of added to its late timestamp");
     running = false;
     await render();
     check(!bar(), "completed turn removes the live status without changing its history");

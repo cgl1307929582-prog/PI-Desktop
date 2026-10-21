@@ -34,6 +34,14 @@ test("approval overrides runtime wait and reading an older window cannot fabrica
   assert.deepEqual(result.agents, []);
 });
 
+test("turn wall time keeps the user boundary through delayed first output and retries", () => {
+  const turnStartedAt = Date.parse("2026-10-21T04:43:12.204Z");
+  const turn = entry([message("response", "assistant", "开始检查", { createdAt: "2026-10-21T04:43:32.967Z", responseDurationMs: 20728 })]);
+  assert.equal(currentWork({ running: true, turnStartedAt }).startedAt, turnStartedAt);
+  assert.equal(currentWork({ entry: turn, running: true, turnStartedAt, activity: { phase: "retrying", since: turnStartedAt + 50000, attempt: 1 } }).startedAt, turnStartedAt);
+  assert.equal(currentWork({ entry: turn, running: true }).startedAt, undefined);
+});
+
 test("parallel assignments use actual model and lifecycle settlement, not Task call duration", () => {
   const first = tool("task-a", "Task", {
     toolArgs: { agent: "frontend", description: "实现手机聊天界面" }, toolDurationMs: 4,

@@ -18303,6 +18303,10 @@ host-created files. The full app's file-preview viewer is covered separately.
   switching clears the prior progress and roster. A narrow pane does not overflow.
   Completion removes the live overview. Configuration, plugins, permissions and
   durable conversations are not rewritten.
+- A provider that buffers its response for 20 seconds must not reset the turn
+  clock on its first output or add that wait again to a completed process. Model
+  response durations count once even when thinking and text share a message.
+  Overlapping child lifetimes count once in the process elapsed value.
 - **Automation:** `pnpm test:e2e:transcript` runs the real renderer checks in
   `scripts/e2e/execution-visibility.tsx`; `current-work.test.mjs` covers lifecycle,
   missing evidence, and blocker projection; `turn-process.test.mjs` covers timing

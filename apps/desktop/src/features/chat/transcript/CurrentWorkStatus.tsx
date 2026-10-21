@@ -10,12 +10,13 @@ import { runActivityLabel } from "./ActivityGroup";
 import "../../../styles/current-work.css";
 
 export const CurrentWorkStatus = memo(function CurrentWorkStatus({
-  sessionId, entry, activity, awaiting, onLatest,
+  sessionId, entry, activity, awaiting, turnStartedAt, onLatest,
 }: {
   sessionId: string;
   entry?: AssistantTurnEntry;
   activity?: AgentActivity;
   awaiting?: CurrentWorkInput["awaiting"];
+  turnStartedAt?: number;
   onLatest: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -31,7 +32,7 @@ export const CurrentWorkStatus = memo(function CurrentWorkStatus({
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const work = useMemo(() => currentWork({ entry, activity, awaiting, running: true }), [entry, activity, awaiting]);
+  const work = useMemo(() => currentWork({ entry, activity, awaiting, turnStartedAt, running: true }), [entry, activity, awaiting, turnStartedAt]);
   const label = work.label ? t(work.label) : activity ? runActivityLabel(activity, t, now) : t("chat.running");
   const duration = (start: number, end = now) => formatToolDuration(Math.max(0, end - start) / 1000);
   const clock = (value: number) => new Date(value).toLocaleTimeString(i18n.language, { hour12: false });

@@ -2,7 +2,6 @@ import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
 import type { AssistantTurnEntry } from "../../../lib/assistant-turns";
 import { getToolAction, TOOL_RUNNING_KEYS } from "../../../lib/tool-display";
 import { toolResultPayload } from "../../../lib/tool-presentation";
-import { turnProcessTiming } from "../../../lib/turn-process";
 import {
   collectDelegationFailures, collectDelegationStatuses, collectDelegationTimings,
   delegationIsCreating, isDelegationActivityItem, subagentOutcome,
@@ -32,10 +31,11 @@ export type CurrentWorkInput = {
   activity?: AgentActivity;
   awaiting?: "permission" | "input" | "plan";
   running: boolean;
+  turnStartedAt?: number;
 };
 
 /** Read-only projection of the current turn, including native workflow Task rows. */
-export function currentWork({ entry, activity, awaiting, running }: CurrentWorkInput) {
+export function currentWork({ entry, activity, awaiting, running, turnStartedAt }: CurrentWorkInput) {
   const parts = entry?.parts ?? [];
   const items = parts.flatMap((part) => part.kind === "activity" ? part.items : []);
   const tools = items.filter((item) => item.kind === "tool");
@@ -65,7 +65,6 @@ export function currentWork({ entry, activity, awaiting, running }: CurrentWorkI
   const activeTool = tools.findLast((item) => item.message.toolStatus === "running")?.message;
   const latestProgress = parts.findLast((part) => part.kind === "message" && part.message.content.trim());
   const progress = latestProgress?.kind === "message" ? latestProgress.message.content : "";
-  const timing = turnProcessTiming(parts);
   const completedTools = tools.filter((item) => ["success", "error", "denied"].includes(item.message.toolStatus ?? ""));
   const lastToolAt = completedTools.reduce<number | undefined>((latest, { message }) => {
     const timestamp = Date.parse(message.toolCompletedAt ?? "");
@@ -83,7 +82,7 @@ export function currentWork({ entry, activity, awaiting, running }: CurrentWorkI
   return {
     agents, progress, label,
     target: !awaiting && !activity && activeTool ? toolTarget(activeTool) : "",
-    startedAt: timing.startedAt,
+    startedAt: Number.isFinite(turnStartedAt) ? turnStartedAt : undefined,
     phaseStartedAt: typeof phaseStartedAt === "number" && Number.isFinite(phaseStartedAt) ? phaseStartedAt : undefined,
     lastToolAt,
     completedTools: completedTools.length,

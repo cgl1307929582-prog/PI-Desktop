@@ -17074,7 +17074,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   segment, literal-final-item leaf selection, failure/denial/recovery, retained-pane
   remounts, Bash rows staying standalone (including adjacent Bash rows) with their
   details closed until opened, and a legacy search reveal.
-- **Expected:** Chronological collapsible process segments leave the final answer,
+- **Expected:** Chronological collapsible process segments leave public progress, the final answer,
   assistant errors, stopped trailing text and pending actions outside them. The
   active group starts open; untouched groups collapse at completion, while explicit
   user choices persist. These group defaults do not depend on the `Show thinking`
@@ -18285,3 +18285,26 @@ host-created files. The full app's file-preview viewer is covered separately.
   against a disposable linked worktree; inspect actual tool evidence and verify the
   original checkout is unchanged. Installation and user-data preservation are separate
   gates, not inferred from mocked-model success.
+
+
+### E2E-CHAT-execution-visibility
+
+- **Preconditions:** Task-candidate build; isolated Chromium profile; Chinese
+  catalog; no production data, live provider credentials or running user sessions.
+- **Actions:** Render public progress separated by Read/Edit/Bash calls, including
+  a 100 ms step and a 3 s step followed by later work. Start eight native Task
+  workers with different effective models, settle one, retry the model, request
+  user input, scroll into history, switch sessions and finish the turn.
+- **Expected:** Public Chinese progress remains visible outside disclosures;
+  the first two steps keep independent recorded durations. The fixed overview
+  survives scrolling, shows eight assignments and their actual models, updates
+  each child's result independently and exposes retry reasons. User input takes
+  priority. Historical windows cannot masquerade as current work; session
+  switching clears the prior progress and roster. A narrow pane does not overflow.
+  Completion removes the live overview. Configuration, plugins, permissions and
+  durable conversations are not rewritten.
+- **Automation:** `pnpm test:e2e:transcript` runs the real renderer checks in
+  `scripts/e2e/execution-visibility.tsx`; `current-work.test.mjs` covers lifecycle,
+  missing evidence, and blocker projection; `turn-process.test.mjs` covers timing
+  isolation and public progress placement. Runtime tests cover the operational
+  language instruction. `test:e2e:transcript-disclosure` protects reading ownership.

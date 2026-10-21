@@ -917,9 +917,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Tool activity starts as a lightweight collapsed item row. Failed and denied
   calls keep their issue in the row header and do not auto-expand their payload.
 - One unified presentation gives each loaded assistant turn chronological
-  collapsible process segments. They contain thinking, tools, hosted searches and
-  intermediate progress text; the trailing answer, assistant errors and stopped
-  trailing text remain outside them.
+  collapsible activity segments. They contain thinking, tools and hosted searches;
+  public progress paragraphs, the trailing answer, assistant errors and stopped
+  trailing text remain outside every disclosure. Each segment uses its own timing;
+  completed step durations cannot grow as later steps arrive. The current task and
+  subagent assignments remain in a fixed overview while the transcript scrolls.
 - A contiguous activity segment receives a group disclosure only when it has at
   least two visible items under the current thinking preference. Progress text or a
   Bash row ends the segment, a singleton uses its item disclosure directly, and

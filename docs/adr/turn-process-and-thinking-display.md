@@ -92,6 +92,19 @@ or activity-group folding. Process headers use recorded timing, direct tool/sear
 counts, running state, and issue counts; they do not double-count delegated child
 work or treat a failed child as a failed assistant turn.
 
+## 2026-10-21 execution visibility amendment
+
+Public progress paragraphs now remain outside every process disclosure. The
+previous design hid the useful explanation after a subsequent tool arrived while
+leaving raw Bash commands exposed. Activity groups retain their existing fold
+ownership, but each process header measures only the segment it renders.
+
+One session-scoped overview outside the transcript scrollport shows actual runtime
+state and native Task assignments. It is a renderer projection of existing events,
+not another workflow engine or persisted state. It never summarizes private
+reasoning or translates stored messages. This supersedes the earlier statement
+that intermediate public progress belongs inside a collapsible process.
+
 ## Consequences
 
 - Chronological collapsible process segments keep the final answer and actionable

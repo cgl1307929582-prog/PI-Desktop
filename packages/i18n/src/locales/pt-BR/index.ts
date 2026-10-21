@@ -318,6 +318,19 @@ export const ptBR = {
     sessionMissing: "Essa sessão não existe mais"
   },
   chat: {
+    execution: {
+      current: "Tarefa atual",
+      total: "Tempo {{time}}",
+      latest: "Mais recente",
+      toolsFinished: "{{count}} chamadas de ferramentas encerradas",
+      lastTool: "Último resultado {{time}}",
+      waitingPermission: "Aguardando sua autorização",
+      waitingInput: "Aguardando sua resposta",
+      waitingPlan: "Aguardando aprovação do plano",
+      responding: "Escrevendo a resposta",
+      assignments: "Tarefas dos subagentes",
+      modelPending: "Modelo não informado",
+    },
     tableActions: "Ações da tabela",
     markdownPlainTextFallback: "Respostas extensas são exibidas como texto simples para manter a interface responsiva.",
     largeTextPageControls: "Páginas da saída extensa",

@@ -193,15 +193,14 @@ export async function turnProcessProbe() {
     const activeTurn = [intro, read, grep];
     render(activeTurn, true, null, "active");
     check(
-      firstProcess() !== null &&
-        processHeaders()[0]?.getAttribute("aria-expanded") === "true" &&
-        visible(firstProcess()),
+      processHeaders().at(-1)?.getAttribute("aria-expanded") === "true" &&
+        visible(container.querySelector(".turn-process.active .turn-process-body")),
       "the active process chunk starts open",
     );
     render(activeTurn, false, null, "active");
     check(
-      processHeaders()[0]?.getAttribute("aria-expanded") === "false" &&
-        !visible(firstProcess()),
+      processHeaders().every((header) => header.getAttribute("aria-expanded") === "false") &&
+        !container.querySelector(".turn-process.active"),
       "an untouched process chunk collapses on completion",
     );
 
@@ -323,9 +322,10 @@ export async function turnProcessProbe() {
       { sessionId: "s", messageId: "read", query: "read", requestId: 1 },
       "search",
     );
+    const searchedProcess = row("read")?.closest(".turn-process");
     check(
-      processHeaders()[0]?.getAttribute("aria-expanded") === "true" &&
-        visible(firstProcess()),
+      searchedProcess?.querySelector(":scope > button")?.getAttribute("aria-expanded") === "true" &&
+        visible(searchedProcess?.querySelector(".turn-process-body") ?? null),
       "search reveals the process chunk that owns the target",
     );
 

@@ -567,6 +567,8 @@ describe("DesktopAgentRuntime configuration matching", () => {
 
     expect(prompt).toContain("Answer in the user's language");
     expect(prompt).toContain("Keep the user informed during long work");
+    expect(prompt).toContain("Chinese request requires Chinese progress");
+    expect(prompt).toContain("separate from private reasoning");
     expect(prompt).toContain(
       "The final response must state the outcome, verification, and remaining blockers",
     );

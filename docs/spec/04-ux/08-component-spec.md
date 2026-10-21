@@ -852,11 +852,14 @@ reading surface of the workstation.
 ### Turn process and thinking display
 
 One unified turn-process presentation projects each loaded assistant turn into
-chronological collapsible process segments plus its trailing answer. Reasoning,
-tools, hosted searches and intermediate assistant text keep their transcript order
-across those segments. The trailing answer streams outside the process; later
-activity can reclassify provisional answer text into the process without changing
-the stored message. Assistant errors and stopped trailing partial answers also
+chronological collapsible activity segments, public progress paragraphs, and its
+trailing answer. Public progress and the trailing answer remain outside every
+process disclosure, including after later tools arrive. Reasoning, tools, hosted
+searches and public text retain their original order without changing stored
+messages. Each process header uses only its own segment timing; later work must
+not increase a completed segment's duration. Tool headers show their own recorded
+execution duration, including subsecond results; a Task call's launch duration is
+never substituted for the child agent's lifetime. Assistant errors and stopped trailing partial answers also
 stay outside it. User/system messages and compaction boundaries are unchanged.
 
 Within the process, an ordinary activity group represents one contiguous
@@ -901,6 +904,29 @@ part of this change. Reasoning hidden by the preference stays hidden until the u
 turns `Show thinking` on. Permission, question, plan/goal approval and other
 pending action cards remain reachable outside a hidden process. See
 [ADR turn-process-and-thinking-display](../../adr/turn-process-and-thinking-display.md).
+
+### Current execution overview
+
+A running visible session has one compact status overview outside the transcript
+scrollport. It remains visible while the user reads earlier messages and identifies
+the current model, runtime wait or executing tool, latest public progress, and
+recorded tool completions. Permission, question and plan approval take precedence
+over stale model activity. Provider retries expose the actual error and retry
+state. No invented completion percentage or stage is shown.
+
+Native Task rows, including collaboration-workflow workers, supply a bounded-height
+assignment roster with each agent's brief, effective model, lifecycle status,
+recorded duration and failure reason. Lifecycle polling never creates another
+agent. Unknown models and missing times remain unknown. Historical message windows
+cannot supply the live task or roster; runtime state remains visible in that case.
+Changing sessions clears the previous task projection, and ending a turn removes
+the overview. Hidden panes own no ticking overview timer. Existing transcript
+history, permissions, tool execution and data formats are unchanged.
+
+User-facing progress follows the user's conversational language at meaningful
+milestones, including Chinese progress when reference documents are English.
+Existing messages are displayed verbatim; no hidden reasoning is used as a public
+progress summary.
 
 ### 4.4 States
 

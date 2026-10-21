@@ -33,6 +33,7 @@ import {
 } from "./TranscriptMenu";
 import { conversationMenuItems } from "./menu-items";
 import { SlotSessionProvider } from "../../../plugins/renderer-slots/use-slots";
+import { CurrentWorkStatus } from "./CurrentWorkStatus";
 
 type ChatTranscriptProps = {
   sessionId: string | undefined;
@@ -238,10 +239,20 @@ function TranscriptBody({
     <DisclosureAnchorContext.Provider value={disclosureAnchorNotifier}>
     <SlotSessionProvider sessionId={sessionId ?? ""}>
     <div
-      className="thread-wrap"
+      className={`thread-wrap${isRunning && paneVisible ? " has-current-work" : ""}`}
       ref={wrapRef}
       data-transcript-settling={veilCovering ? "true" : undefined}
     >
+      {isRunning && paneVisible && sessionId ? (
+        <CurrentWorkStatus
+          key={sessionId}
+          sessionId={sessionId}
+          entry={!readingWindow && tailEntry?.kind === "assistant-turn" ? tailEntry : undefined}
+          activity={agentActivity}
+          awaiting={pendingPermission ? "permission" : askPending ? "input" : approvalPending ? "plan" : undefined}
+          onLatest={() => { onReturnToLatest?.(); jumpToLatest(); }}
+        />
+      ) : null}
       {/* The minimap measures row positions against a rendered scroller. A
         * hidden pane has none, so measuring there would cache junk offsets and
         * reuse them on reveal. It is out of flow and re-measures on mount, so

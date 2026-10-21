@@ -68,6 +68,7 @@ function load(file, imports) {
 }
 
 const shared = load(new URL("../src/features/chat/transcript/shared.tsx", import.meta.url), {
+  "../../../lib/tool-display": await import("../src/lib/tool-display.ts"),
   react: React,
   "react/jsx-runtime": jsxRuntime,
   "react-i18next": { useTranslation: () => ({ t, i18n: { language: locale } }) },

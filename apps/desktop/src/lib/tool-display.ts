@@ -201,6 +201,7 @@ export function getToolSummary(toolName: string | undefined, args: unknown) {
 }
 
 export function formatToolDuration(totalSeconds: number) {
+  if (totalSeconds > 0 && totalSeconds < 1) return "<1s";
   const seconds = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(seconds / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
@@ -214,3 +215,17 @@ export function formatToolDuration(totalSeconds: number) {
 
   return parts.join(" ");
 }
+
+export const TOOL_RUNNING_KEYS: Record<ToolAction, string> = {
+  read: "chat.toolReading",
+  list: "chat.toolListing",
+  search: "chat.toolSearching",
+  write: "chat.toolWriting",
+  edit: "chat.toolEditing",
+  run: "chat.toolRunning",
+  fetch: "chat.toolFetching",
+  fork: "chat.toolUsing",
+  delegate: "chat.toolDelegating",
+  todo: "chat.todo.updating",
+  use: "chat.toolUsing",
+};

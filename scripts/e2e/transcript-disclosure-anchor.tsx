@@ -304,8 +304,13 @@ globalThis.transcriptDisclosureProbe = async () => {
       `an untouched process should collapse when its turn completes (expanded=${processTitle.getAttribute("aria-expanded")}, active=${processContainer.querySelector(".turn-process")?.classList.contains("active") ?? false}, bodyHidden=${processContainer.querySelector<HTMLElement>(".turn-process-body")?.hidden ?? true}, focusInside=${processContainer.querySelector(".turn-process-body")?.contains(document.activeElement) ?? false}, selected=${window.getSelection()?.isCollapsed === false})`,
     );
     assert(
-      processCollapsed.scrollHeight < processBefore.scrollHeight - 100,
-      "completed process content remained visible",
+      processCollapsed.scrollHeight < processBefore.scrollHeight - 10,
+      "completed tool process content remained visible",
+    );
+    assert(
+      processContainer.querySelector('[data-message-id="progress"]')?.closest(".turn-process") === null &&
+        processContainer.querySelector<HTMLElement>('[data-message-id="progress"]')!.getBoundingClientRect().height > 0,
+      "public progress must remain visible after tool details collapse",
     );
     processTitle.click();
     await settle();
@@ -315,7 +320,7 @@ globalThis.transcriptDisclosureProbe = async () => {
       "a completed process should expand on user request",
     );
     assert(
-      processExpanded.scrollHeight > processCollapsed.scrollHeight + 100,
+      processExpanded.scrollHeight > processCollapsed.scrollHeight + 10,
       "process did not expand",
     );
     // Expansion grows content under a pinned bottom, which is the case the held

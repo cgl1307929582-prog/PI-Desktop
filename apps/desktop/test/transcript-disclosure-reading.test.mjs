@@ -81,7 +81,7 @@ test("the transcript restores the held title inside its resize observer", () => 
     transcript,
     /const followScrollNow = useCallback\(\(\) => \{\s*if \(paneVisibleRef\.current && restoreDisclosureAnchor\(\)\) return;\s*if \(!paneVisibleRef\.current \|\| !pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
-  assert.match(transcript, /new ResizeObserver\(followScrollNow\)/);
+  assert.match(transcript, /new ResizeObserver\(\(\) => \{[\s\S]*?followScrollNow\(\);/);
   assert.match(transcript, /ro\.observe\(content, \{ box: "border-box" \}\)/);
 });
 

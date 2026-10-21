@@ -5,7 +5,8 @@ import type {
   AssistantTurnPart,
 } from "./assistant-turns";
 import { isStandaloneRunActivity } from "./assistant-turns";
-import { isDelegationActivityItem, subagentOutcome, type SubagentOutcome } from "./subagent-topology";
+import { collectDelegationStatuses, collectDelegationTimings, isDelegationActivityItem, subagentOutcome, type SubagentOutcome } from "./subagent-topology";
+import { toolResultPayload } from "./tool-presentation";
 
 /** A completed tool must not keep accruing time while its parent waits. */
 export function processClockRunning(
@@ -180,31 +181,48 @@ export function visibleProcessSteps(
   return count;
 }
 
-/** Use recorded message/tool timing for history; elapsed live time is UI-only. */
-export function turnProcessTiming(parts: readonly AssistantTurnPart[]) {
-  const messages = parts.flatMap((part) =>
+/**
+ * Response duration includes provider wait, whereas createdAt can be the first
+ * response event. Adding the duration to that timestamp counts the wait twice.
+ * Sum recorded model work once and union parallel tool/delegate intervals.
+ * The separate current-turn clock owns wall time, including gaps and retries.
+ */
+export function turnProcessDuration(parts: readonly AssistantTurnPart[], now?: number): number {
+  const messages = new Map(parts.flatMap((part) =>
     part.kind === "message" ? [part.message] : part.items.map((item) => item.message),
-  );
-  const starts = messages
-    .map((message) => Date.parse(message.createdAt))
-    .filter(Number.isFinite);
-  if (starts.length === 0) return { startedAt: undefined, endedAt: undefined };
-  const startedAt = Math.min(...starts);
-  const endedAt = Math.max(
-    startedAt,
-    ...messages.map((message) => {
-      const createdAt = Date.parse(message.createdAt);
-      if (!Number.isFinite(createdAt)) return startedAt;
-      const duration =
-        message.role === "tool" ? message.toolDurationMs : message.responseDurationMs;
-      const recordedEnd = Date.parse(message.toolCompletedAt ?? "");
-      return Number.isFinite(recordedEnd)
-        ? recordedEnd
-        : createdAt +
-            (typeof duration === "number" && Number.isFinite(duration)
-              ? Math.max(0, duration)
-              : 0);
-    }),
-  );
-  return { startedAt, endedAt };
+  ).map((message) => [message.id, message]));
+  const items = parts.flatMap((part) => part.kind === "activity" ? part.items : []);
+  const byId = new Map(items.map((item) => [item.message.id, item]));
+  const delegates = collectDelegationTimings(items);
+  const statuses = collectDelegationStatuses(items, { turnLive: now !== undefined });
+  const duration = (value: number | undefined) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  const intervals: Array<{ start: number; end: number }> = [];
+  let total = 0;
+  for (const message of messages.values()) {
+    const createdAt = Date.parse(message.createdAt);
+    if (message.role === "assistant") {
+      total += message.status === "streaming" && now !== undefined && Number.isFinite(createdAt)
+        ? duration(message.providerWaitMs) + duration(message.modelStreamDurationMs) + Math.max(0, now - createdAt)
+        : duration(message.responseDurationMs);
+      continue;
+    }
+    if (message.role !== "tool") continue;
+    const item = byId.get(message.id);
+    const delegated = item && isDelegationActivityItem(item);
+    const payload = toolResultPayload(message) as { delegationId?: string } | undefined;
+    const timing = delegated ? delegates.get(payload?.delegationId ?? message.toolCallId ?? message.id) : undefined;
+    const start = timing?.startedAt ?? createdAt;
+    const storedEnd = timing?.completedAt ?? Date.parse(message.toolCompletedAt ?? "");
+    const live = now !== undefined && (delegated ? subagentOutcome(message, statuses) === "running" : message.toolStatus === "running");
+    const end = live ? now : Number.isFinite(storedEnd) ? storedEnd : start + duration(message.toolDurationMs);
+    if (Number.isFinite(start) && Number.isFinite(end)) intervals.push({ start, end: Math.max(start, end) });
+    else total += duration(message.toolDurationMs);
+  }
+  intervals.sort((left, right) => left.start - right.start);
+  let end = Number.NEGATIVE_INFINITY;
+  for (const interval of intervals) {
+    total += Math.max(0, interval.end - Math.max(end, interval.start));
+    end = Math.max(end, interval.end);
+  }
+  return total;
 }

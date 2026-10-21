@@ -9,7 +9,7 @@ const {
   projectTurnProcess,
   segmentTurnProcess,
   visibleProcessSteps,
-  turnProcessTiming,
+  turnProcessDuration,
   processClockRunning,
 } = await import("../src/lib/turn-process.ts");
 
@@ -213,10 +213,8 @@ test("public progress stays outside disclosures and earlier step timing never gr
   ];
   const segments = segmentTurnProcess(projectTurnProcess(turn(messages)).process);
   assert.deepEqual(segments.map((part) => part.kind), ["progress", "process", "progress", "process"]);
-  const first = turnProcessTiming(segments[1].parts);
-  const second = turnProcessTiming(segments[3].parts);
-  assert.equal(first.endedAt - first.startedAt, 100);
-  assert.equal(second.endedAt - second.startedAt, 3000);
+  assert.equal(turnProcessDuration(segments[1].parts), 100);
+  assert.equal(turnProcessDuration(segments[3].parts), 3000);
   assert.equal(segments[2].parts[0].message.content, "正在编写修复");
 });
 
@@ -228,17 +226,35 @@ test("history timing uses recorded ends and rejects invalid timestamps and durat
       responseDurationMs: 1000,
     }),
   ]);
-  const timing = turnProcessTiming(entry.parts);
-  assert.equal(timing.endedAt - timing.startedAt, 4000);
-  assert.deepEqual(
-    turnProcessTiming(
+  assert.equal(turnProcessDuration(entry.parts), 3000);
+  assert.equal(
+    turnProcessDuration(
       turn([message("bad", "assistant", "x", { createdAt: "bad" })]).parts,
     ),
-    {
-      startedAt: undefined,
-      endedAt: undefined,
-    },
+    0,
   );
+});
+
+test("buffered provider timestamps cannot double-count the wait or duplicate thinking and text", () => {
+  const entry = turn([
+    tool("wait", "TaskWait", { createdAt: "2026-10-21T04:43:56.600Z", toolDurationMs: 1 }),
+    message("answer", "assistant", "完成", {
+      thinking: "analysis", status: "complete",
+      createdAt: "2026-10-21T04:44:59.508Z", responseDurationMs: 56779,
+    }),
+  ]);
+  assert.equal(turnProcessDuration(entry.parts), 56780);
+  assert.equal(turnProcessDuration(entry.parts, Date.parse("2026-10-21T05:00:00Z")), 56780);
+});
+
+test("parallel delegate lifetimes are merged and freeze after completion", () => {
+  const entry = turn([tool("a", "Task", { toolStatus: "success", toolDurationMs: 6,
+    toolResult: { details: { delegationId: "a", status: "completed", startedAt: 1000, completedAt: 11000 } },
+  }), tool("b", "Task", { toolStatus: "success", toolDurationMs: 5,
+    toolResult: { details: { delegationId: "b", status: "completed", startedAt: 1003, completedAt: 13000 } },
+  })]);
+  assert.equal(turnProcessDuration(entry.parts), 12000);
+  assert.equal(turnProcessDuration(entry.parts, 90000), 12000);
 });
 
 test("user boundaries retain independent processes and delegation details stay attached", () => {

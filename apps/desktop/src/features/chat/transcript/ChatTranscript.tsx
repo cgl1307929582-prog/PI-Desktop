@@ -248,6 +248,7 @@ function TranscriptBody({
           key={sessionId}
           sessionId={sessionId}
           entry={!readingWindow && tailEntry?.kind === "assistant-turn" ? tailEntry : undefined}
+          turnStartedAt={!readingWindow ? Date.parse(messages.findLast((message) => message.role === "user")?.createdAt ?? "") : undefined}
           activity={agentActivity}
           awaiting={pendingPermission ? "permission" : askPending ? "input" : approvalPending ? "plan" : undefined}
           onLatest={() => { onReturnToLatest?.(); jumpToLatest(); }}

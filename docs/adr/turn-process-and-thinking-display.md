@@ -105,6 +105,14 @@ not another workflow engine or persisted state. It never summarizes private
 reasoning or translates stored messages. This supersedes the earlier statement
 that intermediate public progress belongs inside a collapsible process.
 
+The installed-provider check exposed a timestamp boundary: response durations
+include the request wait, but assistant timestamps may arrive only when the
+provider releases buffered output. Process headers therefore sum recorded model
+durations once and union overlapping tool/delegate intervals, instead of adding a
+response duration to its display timestamp. The overview's wall clock starts at
+the current user message, including the initial wait; an unloaded history window
+does not invent that boundary.
+
 ## Consequences
 
 - Chronological collapsible process segments keep the final answer and actionable
